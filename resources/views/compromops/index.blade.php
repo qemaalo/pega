@@ -17,7 +17,10 @@
         
         <div class="gantt-month-navigation">
             <button id="prevMonth" class="gantt-nav-btn">« Mes anterior</button>
-            <span id="currentMonthDisplay" class="gantt-current-month">{{ date('F Y') }}</span>
+            <div class="gantt-month-container">
+                <button id="currentMonthBtn" class="gantt-nav-btn gantt-nav-btn-today">Mes actual</button>
+                <span id="currentMonthDisplay" class="gantt-current-month">{{ $dateString }}</span>
+            </div>
             <button id="nextMonth" class="gantt-nav-btn">Mes siguiente »</button>
         </div>
     </div>
@@ -27,12 +30,7 @@
         <div class="gantt-days-header">
             <div class="gantt-sidebar-header"></div>
             <div class="gantt-timeline-header">
-                @php
-                    $daysInMonth = date('t');
-                    $currentMonth = date('m');
-                    $currentYear = date('Y');
-                @endphp
-                
+      
                 @for ($i = 1; $i <= $daysInMonth; $i++)
                     @php
                         $dayOfWeek = date('w', strtotime("$currentYear-$currentMonth-$i"));
@@ -118,13 +116,13 @@
 <style>
     /* Contenedor principal */
     .gantt-container {
-        max-width: 100%; /* Cambiar de 1200px a 100% */
+        max-width: 100%;
+        overflow-x: hidden;
         margin: 40px auto;
         background: #ffffff;
         border-radius: 8px;
         box-shadow: 0 10px 30px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.03);
         padding: 35px 30px;
-        overflow-x: hidden;
     }
     
     /* Encabezado */
@@ -282,25 +280,22 @@
     }
     
     .gantt-sidebar-header {
-        width: 220px;
-        min-width: 220px;
+        width: 160px; /* Reducido de 220px a 160px */
+        min-width: 160px;
         border-right: 1px solid #eaeaea;
     }
     
     .gantt-timeline-header {
         display: flex;
         flex: 1;
-        overflow-x: hidden; /* Cambiar de auto a hidden */
-        width: 100%;
+        overflow-x: hidden;
+        width: calc(100% - 160px); /* Ajustado para compensar la nueva anchura */
     }
     
     .gantt-day-column {
-        flex: 1 0 auto; /* Cambio importante: usar flex-grow y flex-shrink */
-        width: calc(100% / {{ $daysInMonth }}); /* Ancho proporcional */
-        min-width: unset; /* Eliminar min-width que fuerza scroll */
-        text-align: center;
-        padding: 8px 0;
-        border-right: 1px solid #f0f0f0;
+        flex: 1 0 auto;
+        width: calc(100% / {{ $daysInMonth }});
+        min-width: unset;
     }
     
     .gantt-day-column.weekend {
@@ -333,8 +328,8 @@
     
     /* Sidebar con información de tareas */
     .gantt-sidebar {
-        width: 220px;
-        min-width: 220px;
+        width: 160px; /* Reducido de 220px a 160px */
+        min-width: 160px;
         background: #fbfbfb;
         border-right: 1px solid #eaeaea;
         overflow-y: auto;
@@ -387,8 +382,8 @@
     .gantt-timeline {
         flex: 1;
         position: relative;
-        overflow-x: hidden; /* Cambiar de auto a hidden para evitar scroll */
-        width: 100%;
+        overflow-x: hidden;
+        width: calc(100% - 160px); /* Ajustado para compensar la nueva anchura */
     }
     
     /* Grid de fondo */
@@ -404,7 +399,7 @@
     .gantt-grid-column {
         flex: 1 0 auto;
         width: calc(100% / {{ $daysInMonth }});
-        min-width: unset; /* Eliminar min-width */
+        min-width: unset;
         height: 100%;
         border-right: 1px solid #f0f0f0;
     }
@@ -588,6 +583,27 @@
     .gantt-notification-error {
         background: #f44336;
     }
+
+    /* boton fecha actual*/
+    /* Estilos para el contenedor del mes y el botón "Mes actual" */
+    .gantt-month-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .gantt-nav-btn-today {
+        background: #4a6cf7;
+        color: white;
+        font-size: 0.8rem;
+        padding: 4px 10px;
+        margin-bottom: 2px;
+    }
+
+    .gantt-nav-btn-today:hover {
+        background: #3955d4;
+    }
 </style>
 
 <script>
@@ -598,15 +614,17 @@ document.addEventListener('DOMContentLoaded', function() {
     const ganttTimeline = document.getElementById('ganttTimeline');
     
     // Variables para seguimiento
-    let currentMonth = new Date();
-    let currentYear = currentMonth.getFullYear();
-    let currentMonthIndex = currentMonth.getMonth();
+    let currentMonth = new Date({{ $currentYear }}, {{ $currentMonth - 1 }});
+    let currentYear = {{ $currentYear }};
+    let currentMonthIndex = {{ $currentMonth - 1 }}; // JS usa 0-11 para meses
+    let daysInMonth = {{ $daysInMonth }};
+    
+    // Declarar las variables faltantes
     let draggingTask = null;
     let resizing = null;
     let initialX = 0;
     let initialLeft = 0;
     let initialWidth = 0;
-    let daysInMonth = {{ $daysInMonth }};
     
     // Mantener solo la función de formato de fecha
     function formatDate(date) {
@@ -733,6 +751,7 @@ document.addEventListener('DOMContentLoaded', function() {
         taskBar.setAttribute('data-end-date', formatDate(endDate));
     }
     
+    // Actualizar las fechas en la base de datos
     function updateTaskDatesInDB(taskBar) {
         const taskId = taskBar.getAttribute('data-task-id');
         const startDate = taskBar.getAttribute('data-start-date');
@@ -751,8 +770,13 @@ document.addEventListener('DOMContentLoaded', function() {
         formData.append('ftermino', endDate);
         formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
         
-        // URL específica para la actualización AJAX
-        const url = `${window.location.origin}/example-app2/public/compromops/${taskId}/ajax-update`;
+        // URL específica para la actualización AJAX - modificada para funcionar tanto en desarrollo como producción
+        let baseUrl = window.location.origin;
+        // Si estamos en localhost, no incluir el path adicional
+        const url = baseUrl.includes('localhost') 
+            ? `${baseUrl}/compromops/${taskId}/ajax-update`
+            : `${baseUrl}/example-app2/public/compromops/${taskId}/ajax-update`;
+        
         console.log('URL de actualización:', url);
         
         // Usar fetch con la URL correcta
@@ -844,6 +868,18 @@ document.addEventListener('DOMContentLoaded', function() {
         const options = { month: 'long', year: 'numeric' };
         return date.toLocaleDateString('es-ES', options);
     }
+    // Añadir esto después de los otros eventos de navegación
+    const currentMonthBtn = document.getElementById('currentMonthBtn');
+
+    currentMonthBtn.addEventListener('click', function() {
+        // Obtener la fecha actual
+        const today = new Date();
+        const todayMonth = today.getMonth() + 1; // getMonth() devuelve 0-11
+        const todayYear = today.getFullYear();
+        
+        // Redirigir a la página con el mes actual
+        window.location.href = `{{ route('compromops.index') }}?month=${todayMonth}&year=${todayYear}`;
+    });
 });
 </script>
 @endsection

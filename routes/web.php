@@ -27,10 +27,7 @@ Route::get('/test1',  [TestController::class, 'tabla1']);
 Route::get('/test2',  [TestController::class, 'tabla2']);
 Route::resource('/planos',  PlanoController::class);
 
-// Rutas para la carta Gantt
 Route::resource('/compromops', GanttController::class);
-Route::post('/compromops/{id}', [GanttController::class, 'ajaxUpdate'])->name('compromops.ajax.update');
 
-// Agrega esta ruta específica para las actualizaciones AJAX
 Route::post('/compromops/{id}/ajax-update', [GanttController::class, 'ajaxUpdate'])
     ->name('compromops.ajax.update');

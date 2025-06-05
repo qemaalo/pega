@@ -40,9 +40,14 @@ class GanttController extends Controller
               });
         });
         
-        $tasks = $query->get();
-        
-        return view('compromops.index', compact('tasks', 'daysInMonth', 'request'));
+        // Al final, cuando retornas la vista:
+        return view('compromops.index', [
+            'tasks' => $query->get(),
+            'currentMonth' => $month,
+            'currentYear' => $year,
+            'daysInMonth' => $daysInMonth,
+            'dateString' => $date->translatedFormat('F Y') // Nombre del mes en español
+        ]);
     }
     
     // Mantener store vacío para no romper las rutas resource
