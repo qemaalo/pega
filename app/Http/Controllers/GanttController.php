@@ -21,24 +21,51 @@ class GanttController extends Controller
         // Obtener las tareas (órdenes de compromiso)
         $query = Compromops::query();
         
-        // Filtrar por ID/OP si se proporciona
+        // Si estamos buscando por OP
         if ($request->has('search_op') && !empty($request->search_op)) {
-            $query->where('op', $request->search_op);
-        }
-        
-        // Obtener tareas que se cruzan con el mes seleccionado
-        $query->where(function($q) use ($year, $month) {
-            $startOfMonth = Carbon::createFromDate($year, $month, 1)->startOfDay();
-            $endOfMonth = Carbon::createFromDate($year, $month, 1)->endOfMonth()->endOfDay();
+            $search_term = trim($request->search_op);
             
-            // Tareas que comienzan, terminan o abarcan el mes seleccionado
-            $q->whereBetween('finicio', [$startOfMonth, $endOfMonth])
-              ->orWhereBetween('ftermino', [$startOfMonth, $endOfMonth])
-              ->orWhere(function($sq) use ($startOfMonth, $endOfMonth) {
-                  $sq->where('finicio', '<=', $startOfMonth)
-                     ->where('ftermino', '>=', $endOfMonth);
-              });
-        });
+            // Buscar exactamente el OP o similar
+            $query->where(function($q) use ($search_term) {
+                $q->where('op', $search_term)
+                  ->orWhere('op', 'LIKE', "%{$search_term}%");
+            });
+            
+            // Si se encontró algo y no se especificó un mes, ajustar el mes a la primera tarea
+            if (!$request->has('month')) {
+                // Crear una consulta separada para determinar el mes
+                $monthQuery = Compromops::query();
+                $monthQuery->where(function($q) use ($search_term) {
+                    $q->where('op', $search_term)
+                      ->orWhere('op', 'LIKE', "%{$search_term}%");
+                });
+                
+                // Obtener la primera tarea para determinar el mes
+                $firstTask = $monthQuery->first();
+                if ($firstTask && $firstTask->finicio) {
+                    $taskDate = Carbon::parse($firstTask->finicio);
+                    $month = $taskDate->month;
+                    $year = $taskDate->year;
+                    
+                    // Actualizar fecha
+                    $date = Carbon::createFromDate($year, $month, 1);
+                    $daysInMonth = $date->daysInMonth;
+                }
+            }
+        } else {
+            // Solo filtrar por mes si NO estamos buscando un OP específico
+            $query->where(function($q) use ($year, $month) {
+                $startOfMonth = Carbon::createFromDate($year, $month, 1)->startOfDay();
+                $endOfMonth = Carbon::createFromDate($year, $month, 1)->endOfMonth()->endOfDay();
+                
+                $q->whereBetween('finicio', [$startOfMonth, $endOfMonth])
+                  ->orWhereBetween('ftermino', [$startOfMonth, $endOfMonth])
+                  ->orWhere(function($sq) use ($startOfMonth, $endOfMonth) {
+                      $sq->where('finicio', '<=', $startOfMonth)
+                         ->where('ftermino', '>=', $endOfMonth);
+                  });
+            });
+        }
         
         // Al final, cuando retornas la vista:
         return view('compromops.index', [
@@ -46,7 +73,8 @@ class GanttController extends Controller
             'currentMonth' => $month,
             'currentYear' => $year,
             'daysInMonth' => $daysInMonth,
-            'dateString' => $date->translatedFormat('F Y') // Nombre del mes en español
+            'dateString' => $date->translatedFormat('F Y'),
+            'isSearchResults' => !empty($request->search_op)
         ]);
     }
     

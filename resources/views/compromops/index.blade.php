@@ -15,13 +15,26 @@
             </div>
         </form>
         
+        <!-- Nueva navegación de meses -->
         <div class="gantt-month-navigation">
-            <button id="prevMonth" class="gantt-nav-btn">« Mes anterior</button>
-            <div class="gantt-month-container">
-                <button id="currentMonthBtn" class="gantt-nav-btn gantt-nav-btn-today">Mes actual</button>
+            <button id="prevMonth" class="gantt-nav-btn gantt-nav-btn-prev">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M15 18l-6-6 6-6"></path>
+                </svg>
+                <span>Anterior</span>
+            </button>
+            
+            <div class="gantt-month-display">
+                <button id="currentMonthBtn" class="gantt-nav-btn-today">Hoy</button>
                 <span id="currentMonthDisplay" class="gantt-current-month">{{ $dateString }}</span>
             </div>
-            <button id="nextMonth" class="gantt-nav-btn">Mes siguiente »</button>
+            
+            <button id="nextMonth" class="gantt-nav-btn gantt-nav-btn-next">
+                <span>Siguiente</span>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M9 18l6-6-6-6"></path>
+                </svg>
+            </button>
         </div>
     </div>
     
@@ -77,28 +90,51 @@
                 @if(isset($tasks) && $tasks->count() > 0)
                     @foreach($tasks as $index => $task)
                         @php
-                            // Calcular posición horizontal
-                            $taskStart = $task->finicio ? date('j', strtotime($task->finicio)) : 1;
-                            $taskEnd = $task->ftermino ? date('j', strtotime($task->ftermino)) : $daysInMonth;
+                            // Verificar que existan fechas
+                            if (!$task->finicio || !$task->ftermino) continue;
                             
-                            // Si la fecha no está en el mes actual, ajustar los límites
-                            if (date('m', strtotime($task->finicio)) != $currentMonth) $taskStart = 1;
-                            if (date('m', strtotime($task->ftermino)) != $currentMonth) $taskEnd = $daysInMonth;
+                            // Convertir las fechas de la tarea a objetos Carbon para mejor manipulación
+                            $taskStartDate = \Carbon\Carbon::parse($task->finicio);
+                            $taskEndDate = \Carbon\Carbon::parse($task->ftermino);
                             
+                            // Obtener los límites del mes mostrado
+                            $monthStart = \Carbon\Carbon::createFromDate($currentYear, $currentMonth, 1);
+                            $monthEnd = \Carbon\Carbon::createFromDate($currentYear, $currentMonth, $daysInMonth);
+                            
+                            // Calcular las fechas efectivas dentro del mes visible
+                            $effectiveStart = $taskStartDate->copy();
+                            $effectiveEnd = $taskEndDate->copy();
+                            
+                            // Ajustar fechas si están fuera del mes visible
+                            if ($effectiveStart->lt($monthStart)) $effectiveStart = $monthStart->copy();
+                            if ($effectiveEnd->gt($monthEnd)) $effectiveEnd = $monthEnd->copy();
+                            
+                            // Convertir a día del mes (1-31)
+                            $taskStart = $effectiveStart->day;
+                            $taskEnd = $effectiveEnd->day;
+                            
+                            // Calcular posición y ancho como porcentaje del ancho total
                             $leftPosition = ($taskStart - 1) / $daysInMonth * 100;
                             $width = ($taskEnd - $taskStart + 1) / $daysInMonth * 100;
                             
-                            // Calcular posición vertical - altura de cada fila: 46px
+                            // Asegurar ancho mínimo para visibilidad
+                            if ($width < 2) $width = 2;
+                            
+                            // Calcular posición vertical
                             $topPosition = ($index * 46) + 10; // 10px de margen inicial
+                            
+                            // Generar etiquetas de fecha correctas (mostrando mes si difiere)
+                            $startLabel = $taskStartDate->format('d') . ($taskStartDate->month != $currentMonth ? '/' . $taskStartDate->format('m') : '');
+                            $endLabel = $taskEndDate->format('d') . ($taskEndDate->month != $currentMonth ? '/' . $taskEndDate->format('m') : '');
                         @endphp
                         
                         <div class="gantt-task-bar" 
                              data-task-id="{{ $task->id }}"
-                             data-start-date="{{ $task->finicio ? date('Y-m-d', strtotime($task->finicio)) : '' }}"
-                             data-end-date="{{ $task->ftermino ? date('Y-m-d', strtotime($task->ftermino)) : '' }}"
+                             data-start-date="{{ $taskStartDate->format('Y-m-d') }}"
+                             data-end-date="{{ $taskEndDate->format('Y-m-d') }}"
                              style="left: {{ $leftPosition }}%; width: {{ $width }}%; top: {{ $topPosition }}px;">
                             <div class="gantt-task-content">
-                                <span class="gantt-task-dates">{{ date('d/m', strtotime($task->finicio)) }} - {{ date('d/m', strtotime($task->ftermino)) }}</span>
+                                <span class="gantt-task-dates">{{ $startLabel }} - {{ $endLabel }}</span>
                             </div>
                             <div class="gantt-task-resizer gantt-task-resizer-left"></div>
                             <div class="gantt-task-resizer gantt-task-resizer-right"></div>
@@ -235,32 +271,103 @@
         color: #333;
     }
     
-    /* Navegación del mes */
+    /* Navegación del mes - versión sofisticada */
     .gantt-month-navigation {
         display: flex;
+        justify-content: space-between;
         align-items: center;
-        gap: 12px;
+        background: #f8f9fa;
+        border-radius: 8px;
+        padding: 10px 15px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #eaeaea;
+        margin-left: auto;
+        width: 100%;
+        max-width: 520px;
     }
-    
+
     .gantt-nav-btn {
-        padding: 6px 12px;
-        border: 1px solid #e0e0e0;
-        border-radius: 4px;
-        background: #f8f8f8;
-        color: #555;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
         font-size: 0.85rem;
+        font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
     }
-    
-    .gantt-nav-btn:hover {
-        background: #f0f0f0;
+
+    /* Botón mes anterior */
+    .gantt-nav-btn-prev {
+        background: #ff9800;
+        color: white;
+    }
+
+    .gantt-nav-btn-prev:hover {
+        background: #e68a00;
+        transform: translateX(-2px);
+    }
+
+    /* Botón mes siguiente */
+    .gantt-nav-btn-next {
+        background: #4caf50;
+        color: white;
+    }
+
+    .gantt-nav-btn-next:hover {
+        background: #3d8b40;
+        transform: translateX(2px);
+    }
+
+    /* Visualización del mes actual */
+    .gantt-month-display {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        padding: 5px 10px;
+        position: relative;
+    }
+
+    .gantt-month-display:before {
+        content: '';
+        position: absolute;
+        bottom: -2px;
+        left: 15%;
+        right: 15%;
+        height: 2px;
+        background: linear-gradient(90deg, transparent, #4a6cf7, transparent);
+        border-radius: 2px;
+    }
+
+    .gantt-current-month {
+        font-weight: 600;
+        color: #333;
+        font-size: 1.1rem;
+        text-align: center;
     }
     
-    .gantt-current-month {
-        font-weight: 500;
-        color: #333;
-        font-size: 1rem;
+    /* Botón mes actual/hoy */
+    .gantt-nav-btn-today {
+        background: #4a6cf7;
+        color: white;
+        font-size: 0.75rem;
+        padding: 4px 14px;
+        border: none;
+        border-radius: 20px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        margin-bottom: 4px;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+    }
+
+    .gantt-nav-btn-today:hover {
+        background: #3955d4;
+        transform: translateY(-1px);
+        box-shadow: 0 2px 5px rgba(74, 108, 247, 0.3);
     }
     
     /* Contenedor del Gantt */
