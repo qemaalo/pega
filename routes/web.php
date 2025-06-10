@@ -29,5 +29,7 @@ Route::resource('/planos',  PlanoController::class);
 
 Route::resource('/compromops', GanttController::class);
 
-Route::post('/compromops/{id}/ajax-update', [GanttController::class, 'ajaxUpdate'])
-    ->name('compromops.ajax.update');
+Route::post('/compromops/{id}/ajax-update', [App\Http\Controllers\GanttController::class, 'ajaxUpdate'])->name('compromops.ajax-update');
+Route::post('/compromops-history/{id}/confirm', [App\Http\Controllers\GanttController::class, 'confirmChange'])->name('compromops.history.confirm');
+Route::post('/compromops-comment', [App\Http\Controllers\GanttController::class, 'addComment'])->name('compromops.comment.add');
+Route::post('/compromops/{id}/comment', [App\Http\Controllers\GanttController::class, 'saveComment'])->name('compromops.comment');

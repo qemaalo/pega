@@ -711,6 +711,121 @@
     .gantt-nav-btn-today:hover {
         background: #3955d4;
     }
+
+    /* Estilos para el botón de confirmación */
+    .gantt-confirm-action {
+        position: absolute;
+        right: -35px;
+        top: 0;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+
+    .gantt-confirm-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: #4caf50;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 16px;
+        border: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: all 0.2s ease;
+    }
+
+    .gantt-confirm-btn:hover {
+        background-color: #3d8b40;
+        transform: scale(1.1);
+    }
+
+    .gantt-cancel-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: #f44336;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 16px;
+        border: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: all 0.2s ease;
+    }
+
+    .gantt-cancel-btn:hover {
+        background-color: #d32f2f;
+        transform: scale(1.1);
+    }
+
+    /* Añade estos estilos junto a los otros botones */
+    .gantt-comment-btn {
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background-color: #ff9800;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 16px;
+        border: none;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        transition: all 0.2s ease;
+    }
+
+    .gantt-comment-btn:hover {
+        background-color: #e68a00;
+        transform: scale(1.1);
+    }
+
+    /* Estilos para el modal de comentarios */
+    .gantt-comment-modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.4);
+    }
+
+    .gantt-comment-modal-content {
+        background-color: #fff;
+        margin: 10% auto;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        width: 80%;
+        max-width: 500px;
+    }
+
+    .gantt-comment-textarea {
+        width: 100%;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        min-height: 100px;
+        margin: 10px 0;
+        font-family: inherit;
+    }
+
+    .gantt-comment-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        margin-top: 15px;
+    }
 </style>
 
 <script>
@@ -747,6 +862,15 @@ document.addEventListener('DOMContentLoaded', function() {
     function setupTaskBarEvents(taskBar) {
         // Iniciar arrastre
         taskBar.addEventListener('mousedown', function(e) {
+            // No permitir mover si hay confirmación pendiente
+            if (taskBar.querySelector('.gantt-confirm-action')) {
+                return;
+            }
+            
+            // Detener cualquier arrastre anterior (por si acaso)
+            draggingTask = null;
+            resizing = null;
+            
             if (e.target.classList.contains('gantt-task-resizer')) {
                 // Iniciar redimensionamiento
                 resizing = {
@@ -768,6 +892,17 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Simplificar el evento mousemove para eliminar la creación
     document.addEventListener('mousemove', function(e) {
+        // Si no hay nada siendo arrastrado, salir
+        if (!draggingTask && !resizing) return;
+        
+        // No mover nada si hay alguna confirmación pendiente
+        const pendingConfirmations = document.querySelectorAll('.gantt-confirm-action');
+        if (pendingConfirmations.length > 0) {
+            draggingTask = null;
+            resizing = null;
+            return;
+        }
+        
         if (draggingTask) {
             // Mover tarea existente
             const dx = e.clientX - initialX;
@@ -815,17 +950,21 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Simplificar el evento mouseup
+    // Evento mouseup para finalizar arrastre/redimensionamiento
     document.addEventListener('mouseup', function(e) {
+        // Si estábamos arrastrando una tarea
         if (draggingTask) {
-            // Finalizar arrastre y actualizar fechas en BD
-            updateTaskDatesInDB(draggingTask);
+            // Mostrar botones de confirmación
+            showConfirmationButtons(draggingTask);
+            // ¡IMPORTANTE! Reiniciar la variable draggingTask
             draggingTask = null;
         }
         
+        // Si estábamos redimensionando una tarea
         if (resizing) {
-            // Finalizar redimensionamiento y actualizar fechas en BD
-            updateTaskDatesInDB(resizing.task);
+            // Mostrar botones de confirmación
+            showConfirmationButtons(resizing.task);
+            // ¡IMPORTANTE! Reiniciar la variable resizing
             resizing = null;
         }
     });
@@ -987,6 +1126,199 @@ document.addEventListener('DOMContentLoaded', function() {
         // Redirigir a la página con el mes actual
         window.location.href = `{{ route('compromops.index') }}?month=${todayMonth}&year=${todayYear}`;
     });
+    
+    // Función para mostrar botones de confirmación
+    function showConfirmationButtons(taskBar) {
+        // Guardar datos originales para poder restaurar si se cancela
+        const originalStartDate = taskBar.getAttribute('data-start-date');
+        const originalEndDate = taskBar.getAttribute('data-end-date');
+        const originalLeft = taskBar.style.left;
+        const originalWidth = taskBar.style.width;
+        
+        // Eliminar botones anteriores si existen
+        const existingConfirm = taskBar.querySelector('.gantt-confirm-action');
+        if (existingConfirm) {
+            existingConfirm.remove();
+        }
+        
+        // Crear contenedor para botones
+        const confirmContainer = document.createElement('div');
+        confirmContainer.className = 'gantt-confirm-action';
+        
+        // Botón de confirmar
+        const confirmBtn = document.createElement('button');
+        confirmBtn.className = 'gantt-confirm-btn';
+        confirmBtn.innerHTML = '✓';
+        confirmBtn.title = 'Confirmar cambio';
+        
+        // Botón de comentario
+        const commentBtn = document.createElement('button');
+        commentBtn.className = 'gantt-comment-btn';
+        commentBtn.innerHTML = '💬';
+        commentBtn.title = 'Añadir comentario';
+        
+        // Botón de cancelar
+        const cancelBtn = document.createElement('button');
+        cancelBtn.className = 'gantt-cancel-btn';
+        cancelBtn.innerHTML = '✕';
+        cancelBtn.title = 'Cancelar cambio';
+        
+        // Agregar evento al botón de confirmar
+        confirmBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Evitar que el clic propague
+            
+            // Actualizar en la base de datos
+            updateTaskDatesInDB(taskBar);
+            
+            // Eliminar botones
+            confirmContainer.remove();
+        });
+        
+        // Agregar evento al botón de comentario
+        commentBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Evitar que el clic propague
+            
+            // Mostrar modal de comentarios
+            showCommentModal(taskBar);
+        });
+        
+        // Agregar evento al botón de cancelar
+        cancelBtn.addEventListener('click', function(e) {
+            e.stopPropagation(); // Evitar que el clic propague
+            
+            // Restaurar posición y tamaño originales
+            taskBar.style.left = originalLeft;
+            taskBar.style.width = originalWidth;
+            
+            // Restaurar fechas originales
+            taskBar.setAttribute('data-start-date', originalStartDate);
+            taskBar.setAttribute('data-end-date', originalEndDate);
+            
+            // Actualizar el texto en la barra
+            const startDate = new Date(originalStartDate);
+            const endDate = new Date(originalEndDate);
+            const datesSpan = taskBar.querySelector('.gantt-task-dates');
+            if (datesSpan) {
+                datesSpan.textContent = `${startDate.getDate()}/${startDate.getMonth() + 1} - ${endDate.getDate()}/${endDate.getMonth() + 1}`;
+            }
+            
+            // Eliminar botones
+            confirmContainer.remove();
+            
+            // Mostrar notificación
+            showNotification('Cambios cancelados');
+        });
+        
+        // Agregar botones al contenedor
+        confirmContainer.appendChild(confirmBtn);
+        confirmContainer.appendChild(commentBtn);
+        confirmContainer.appendChild(cancelBtn);
+        
+        // Agregar contenedor a la barra
+        taskBar.appendChild(confirmContainer);
+    }
+
+    // Función para mostrar el modal de comentarios
+    function showCommentModal(taskBar) {
+        const taskId = taskBar.getAttribute('data-task-id');
+        
+        // Crear el modal si no existe
+        let commentModal = document.getElementById('ganttCommentModal');
+        if (!commentModal) {
+            commentModal = document.createElement('div');
+            commentModal.id = 'ganttCommentModal';
+            commentModal.className = 'gantt-comment-modal';
+            
+            // Contenido del modal
+            commentModal.innerHTML = `
+                <div class="gantt-comment-modal-content">
+                    <h3>Añadir comentario</h3>
+                    <textarea id="taskComment" class="gantt-comment-textarea" placeholder="Escribe tu comentario aquí..."></textarea>
+                    <div class="gantt-comment-actions">
+                        <button id="cancelComment" class="gantt-btn-secondary">Cancelar</button>
+                        <button id="saveComment" class="gantt-btn">Guardar</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(commentModal);
+            
+            // Evento para cerrar el modal con el botón Cancelar
+            document.getElementById('cancelComment').addEventListener('click', function() {
+                commentModal.style.display = 'none';
+            });
+            
+            // Cerrar el modal al hacer clic fuera del contenido
+            commentModal.addEventListener('click', function(e) {
+                if (e.target === commentModal) {
+                    commentModal.style.display = 'none';
+                }
+            });
+        }
+        
+        // Mostrar el modal
+        commentModal.style.display = 'block';
+        
+        // Evento para guardar comentario
+        document.getElementById('saveComment').onclick = function() {
+            const commentText = document.getElementById('taskComment').value.trim();
+            
+            if (commentText) {
+                // Guardar el comentario
+                saveTaskComment(taskId, commentText, taskBar);
+                
+                // Cerrar el modal
+                commentModal.style.display = 'none';
+            } else {
+                showNotification('Por favor, escribe un comentario', true);
+            }
+        };
+    }
+
+    // Función para guardar el comentario
+    function saveTaskComment(taskId, comment, taskBar) {
+        // URL para guardar el comentario
+        let baseUrl = window.location.origin;
+        const url = baseUrl.includes('localhost') 
+            ? `${baseUrl}/compromops/${taskId}/comment`
+            : `${baseUrl}/example-app2/public/compromops/${taskId}/comment`;
+        
+        // Datos del comentario (sin incluir finicio y ftermino)
+        const formData = new FormData();
+        formData.append('comment', comment);
+        formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
+        // Eliminadas las líneas de finicio y ftermino
+    
+        // Enviar la solicitud
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            },
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showNotification('Comentario guardado correctamente');
+                
+                // También actualizar la tarea
+                updateTaskDatesInDB(taskBar);
+                
+                // Eliminar botones de confirmación
+                const confirmContainer = taskBar.querySelector('.gantt-confirm-action');
+                if (confirmContainer) {
+                    confirmContainer.remove();
+                }
+            } else {
+                showNotification('Error: ' + data.message, true);
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showNotification('Error al guardar comentario', true);
+        });
+    }
 });
 </script>
 @endsection

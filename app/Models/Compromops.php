@@ -30,4 +30,17 @@ class Compromops extends Model
         'fterminoreal' => 'datetime',
         'fecha' => 'datetime',
     ];
+
+    public function historial()
+    {
+        return $this->hasMany(CompromopsHistory::class, 'compromops_id');
+    }
+
+    /**
+     * Obtener los comentarios asociados a este compromiso
+     */
+    public function comments()
+    {
+        return $this->hasMany(CompromopsComment::class);
+    }
 }

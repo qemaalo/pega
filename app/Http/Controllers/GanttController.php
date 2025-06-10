@@ -167,4 +167,45 @@ class GanttController extends Controller
             ], 500);
         }
     }
+    
+    /**
+     * Guarda un comentario para una tarea
+     */
+    public function saveComment(Request $request, $id)
+    {
+        try {
+            // Validar datos
+            $request->validate([
+                'comment' => 'required|string|max:1000',
+            ]);
+            
+            // Buscar la tarea
+            $task = Compromops::findOrFail($id);
+            
+            // Crear comentario sin las fechas
+            $comment = $task->comments()->create([
+                'comentario' => $request->comment,
+                'usuario' => auth()->user() ? auth()->user()->name : 'Usuario anónimo',
+            ]);
+            
+            // Actualizar fechas de la tarea (opcional)
+            if ($request->has('finicio') && $request->has('ftermino')) {
+                $task->update([
+                    'finicio' => $request->finicio,
+                    'ftermino' => $request->ftermino
+                ]);
+            }
+            
+            return response()->json([
+                'success' => true,
+                'message' => 'Comentario guardado correctamente',
+                'comment' => $comment
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Error al guardar comentario: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }
