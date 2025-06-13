@@ -132,12 +132,15 @@
                              data-task-id="{{ $task->id }}"
                              data-start-date="{{ $taskStartDate->format('Y-m-d') }}"
                              data-end-date="{{ $taskEndDate->format('Y-m-d') }}"
+                             data-activo="{{ $task->activo }}"
                              style="left: {{ $leftPosition }}%; width: {{ $width }}%; top: {{ $topPosition }}px;">
                             <div class="gantt-task-content">
                                 <span class="gantt-task-dates">{{ $startLabel }} - {{ $endLabel }}</span>
                             </div>
-                            <div class="gantt-task-resizer gantt-task-resizer-left"></div>
-                            <div class="gantt-task-resizer gantt-task-resizer-right"></div>
+                            @if($task->activo)
+                                <div class="gantt-task-resizer gantt-task-resizer-left"></div>
+                                <div class="gantt-task-resizer gantt-task-resizer-right"></div>
+                            @endif
                         </div>
                     @endforeach
                 @endif
@@ -231,6 +234,7 @@
     
     .gantt-search-form {
         display: flex;
+        align-items: center;
         align-items: center;
     }
     
@@ -826,6 +830,18 @@
         gap: 10px;
         margin-top: 15px;
     }
+
+    /* Estilo para barras inactivas */
+    .gantt-task-bar[data-activo="0"] {
+        background-color: #a0a0a0 !important; /* Color gris */
+        opacity: 0.7;
+        cursor: not-allowed !important; /* Cursor que indica que no es interactivo */
+    }
+
+    /* Ocultar los redimensionadores en tareas inactivas */
+    .gantt-task-bar[data-activo="0"] .gantt-task-resizer {
+        display: none !important;
+    }
 </style>
 
 <script>
@@ -860,7 +876,12 @@ document.addEventListener('DOMContentLoaded', function() {
     document.querySelectorAll('.gantt-task-bar').forEach(setupTaskBarEvents);
     
     function setupTaskBarEvents(taskBar) {
-        // Iniciar arrastre
+        // Verificar si la tarea está inactiva
+        if (taskBar.getAttribute('data-activo') === "0") {
+            return; // No configurar eventos para tareas inactivas
+        }
+        
+        // Resto del código sin cambios
         taskBar.addEventListener('mousedown', function(e) {
             // No permitir mover si hay confirmación pendiente
             if (taskBar.querySelector('.gantt-confirm-action')) {

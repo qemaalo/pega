@@ -4,6 +4,7 @@ use App\Http\Controllers\GanttController;
 use App\Http\Controllers\PlanoController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TestController;
+use App\Http\Controllers\FrappeController;
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -33,3 +34,6 @@ Route::post('/compromops/{id}/ajax-update', [App\Http\Controllers\GanttControlle
 Route::post('/compromops-history/{id}/confirm', [App\Http\Controllers\GanttController::class, 'confirmChange'])->name('compromops.history.confirm');
 Route::post('/compromops-comment', [App\Http\Controllers\GanttController::class, 'addComment'])->name('compromops.comment.add');
 Route::post('/compromops/{id}/comment', [App\Http\Controllers\GanttController::class, 'saveComment'])->name('compromops.comment');
+
+
+Route::get('/gantt', [FrappeController::class, 'view']);
