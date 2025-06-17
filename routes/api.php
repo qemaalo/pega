@@ -19,6 +19,8 @@ Route::middleware('auth:sanctum')->get('/user', function (Request $request) {
     return $request->user();
 });
 
-
-
+// Ruta para obtener todas las tareas
 Route::get('/compromops', [App\Http\Controllers\FrappeController::class, 'getTasks']);
+
+// Ruta para actualizar fechas de una tarea específica
+Route::post('/compromops/{id}/update-dates', [App\Http\Controllers\FrappeController::class, 'updateDates']);

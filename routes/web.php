@@ -5,6 +5,8 @@ use App\Http\Controllers\PlanoController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\TestController;
 use App\Http\Controllers\FrappeController;
+use App\Http\Controllers\CumpleanoController;
+
 /*
 |--------------------------------------------------------------------------
 | Web Routes
@@ -36,4 +38,12 @@ Route::post('/compromops-comment', [App\Http\Controllers\GanttController::class,
 Route::post('/compromops/{id}/comment', [App\Http\Controllers\GanttController::class, 'saveComment'])->name('compromops.comment');
 
 
-Route::get('/gantt', [FrappeController::class, 'view']);
+
+Route::get('/gantt', [App\Http\Controllers\FrappeController::class, 'view']);
+
+
+
+Route::resource('cumpleanos', CumpleanoController::class);
+Route::post('/cumpleanos/{id}/enviado', [CumpleanoController::class, 'marcarEnviado'])->name('cumpleanos.enviado');
+Route::patch('/cumpleanos/{id}/desvincular', [CumpleanoController::class, 'desvincular'])->name('cumpleanos.desvincular');
+Route::patch('/cumpleanos/{id}/vincular', [CumpleanoController::class, 'vincular'])->name('cumpleanos.vincular');

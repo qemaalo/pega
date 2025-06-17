@@ -8,6 +8,13 @@ use Illuminate\Foundation\Console\Kernel as ConsoleKernel;
 class Kernel extends ConsoleKernel
 {
     /**
+     * The Artisan commands provided by your application.
+     */
+    protected $commands = [
+        Commands\EnviarEmailCumpleanos::class,
+    ];
+
+    /**
      * Define the application's command schedule.
      *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
@@ -15,7 +22,12 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule)
     {
-        // $schedule->command('inspire')->hourly();
+        // Enviar emails de cumpleaños todos los días a las 8:00 AM
+        $schedule->command('cumpleanos:enviar-emails')
+                ->dailyAt('08:00')
+                ->timezone('America/Santiago') // 👈 Cambia por tu zona horaria
+                ->withoutOverlapping() // Evita ejecuciones simultáneas
+                ->runInBackground(); // Ejecuta en segundo plano
     }
 
     /**
