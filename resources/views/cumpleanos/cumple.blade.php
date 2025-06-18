@@ -143,7 +143,7 @@
                                         </span>
                                     @endif
 
-                                    {{-- Botón de desvinculación --}}
+                                    {{-- Botón de desvinculación/vinculación CORREGIDO --}}
                                     @if($cumple->vinculado_empresa)
                                         <form method="POST" action="{{ route('cumpleanos.desvincular', $cumple->id) }}" 
                                               style="display: inline;">

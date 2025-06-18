@@ -64,46 +64,63 @@ class Cumpleano extends Model
     }
 
     /**
-     * Obtener los días restantes para el próximo cumpleaños
+     * Obtener los días restantes para el próximo cumpleaños - CORREGIDO
      */
     public function getDiasRestantesAttribute()
     {
-        $hoy = Carbon::now();
-        $cumpleanos = Carbon::parse($this->fecha_cumpleanos)->year($hoy->year);
+        $hoy = Carbon::now()->startOfDay(); // Usar inicio del día para comparación exacta
+        $fechaNacimiento = Carbon::parse($this->fecha_cumpleanos);
         
-        // Si ya pasó este año, tomar el próximo año
-        if ($cumpleanos->lt($hoy)) {
-            $cumpleanos->addYear();
+        // Crear fecha de cumpleaños para este año
+        $cumpleanosEsteAno = Carbon::create(
+            $hoy->year, 
+            $fechaNacimiento->month, 
+            $fechaNacimiento->day, 
+            0, 0, 0
+        );
+        
+        // Si el cumpleaños de este año ya pasó, usar el del próximo año
+        if ($cumpleanosEsteAno->lt($hoy)) {
+            $cumpleanosEsteAno->addYear();
         }
         
-        return $hoy->diffInDays($cumpleanos);
+        // Calcular diferencia en días
+        return $hoy->diffInDays($cumpleanosEsteAno);
     }
 
     /**
-     * Verificar si hoy es el cumpleaños
+     * Verificar si hoy es el cumpleaños - CORREGIDO
      */
     public function esCumpleanosHoy()
     {
         $hoy = Carbon::now();
-        $cumpleanos = Carbon::parse($this->fecha_cumpleanos);
+        $fechaNacimiento = Carbon::parse($this->fecha_cumpleanos);
         
-        return $hoy->month === $cumpleanos->month && $hoy->day === $cumpleanos->day;
+        return $hoy->month === $fechaNacimiento->month && $hoy->day === $fechaNacimiento->day;
     }
 
     /**
-     * Obtener los próximos cumpleaños (siguiente fecha de cumpleaños)
+     * Obtener los próximos cumpleaños (siguiente fecha de cumpleaños) - CORREGIDO
      */
     public function getProximoCumpleanosAttribute()
     {
-        $hoy = Carbon::now();
-        $cumpleanos = Carbon::parse($this->fecha_cumpleanos)->year($hoy->year);
+        $hoy = Carbon::now()->startOfDay();
+        $fechaNacimiento = Carbon::parse($this->fecha_cumpleanos);
         
-        // Si ya pasó este año, tomar el próximo año
-        if ($cumpleanos->lt($hoy)) {
-            $cumpleanos->addYear();
+        // Crear fecha de cumpleaños para este año
+        $cumpleanosEsteAno = Carbon::create(
+            $hoy->year, 
+            $fechaNacimiento->month, 
+            $fechaNacimiento->day, 
+            0, 0, 0
+        );
+        
+        // Si el cumpleaños de este año ya pasó, usar el del próximo año
+        if ($cumpleanosEsteAno->lt($hoy)) {
+            $cumpleanosEsteAno->addYear();
         }
         
-        return $cumpleanos;
+        return $cumpleanosEsteAno;
     }
 
     /**

@@ -17,7 +17,7 @@ class EnviarEmailCumpleanos extends Command
     public function handle()
     {
         $modoTest = $this->option('test');
-        $emailDestino = 'admin@empresa.com'; // CAMBIA ESTE EMAIL SI NECESITAS
+        $emailDestino = 'grupo@ingomar.cl'; // CAMBIA ESTE EMAIL SI NECESITAS
 
         if ($modoTest) {
             $this->info('🧪 MODO DE PRUEBA ACTIVADO - No se enviarán emails reales');
@@ -36,21 +36,30 @@ class EnviarEmailCumpleanos extends Command
         $emailsEnviados = 0;
 
         foreach ($cumpleanosHoy as $cumpleano) {
-            $nombreCompleto = "{$cumpleano->nombre} {$cumpleano->apellido}";
-            $this->line("   🎂 {$nombreCompleto} ({$cumpleano->edad} años)");
+            // Usar el accessor correctamente
+            $nombreCompleto = $cumpleano->nombre_completo;
+            $edadActual = $cumpleano->edad_actual;
+            
+            $this->line("   🎂 {$nombreCompleto} cumple " . ($edadActual + 1) . " años");
 
             if (!$modoTest) {
                 $resultado = $this->enviarEmail($emailDestino, $cumpleano, $nombreCompleto);
 
+                // ✅ MARCAR COMO ENVIADO SIEMPRE QUE EL EMAIL SE ENVÍE EXITOSAMENTE
                 if ($resultado) {
                     $cumpleano->email_enviado = true;
                     $cumpleano->save();
+                    $this->line("     📧 Marcado como enviado en la base de datos");
                 }
+            } else {
+                // En modo test, también simular el marcado
+                $this->line("     📧 (En modo test: se marcaría como enviado)");
             }
 
             $emailsEnviados++;
         }
 
+        // Resetear emails de cumpleaños pasados
         $this->resetearEmailsPasados();
 
         $mensaje = $modoTest 
@@ -68,7 +77,7 @@ class EnviarEmailCumpleanos extends Command
 
         return Cumpleano::whereMonth('fecha_cumpleanos', $hoy->month)
                         ->whereDay('fecha_cumpleanos', $hoy->day)
-                        ->where('email_enviado', false)
+                        ->where('email_enviado', false) // Solo los que NO han sido notificados
                         ->get();
     }
 
@@ -87,9 +96,13 @@ class EnviarEmailCumpleanos extends Command
     private function resetearEmailsPasados()
     {
         $hoy = Carbon::now();
+        
+        // Resetear solo cumpleaños que ya pasaron este año
         $reseteados = Cumpleano::where('email_enviado', true)
             ->where(function ($query) use ($hoy) {
+                // Cumpleaños de meses anteriores
                 $query->whereMonth('fecha_cumpleanos', '<', $hoy->month)
+                      // O del mismo mes pero días anteriores
                       ->orWhere(function ($q) use ($hoy) {
                           $q->whereMonth('fecha_cumpleanos', $hoy->month)
                             ->whereDay('fecha_cumpleanos', '<', $hoy->day);
@@ -98,7 +111,7 @@ class EnviarEmailCumpleanos extends Command
             ->update(['email_enviado' => false]);
 
         if ($reseteados > 0) {
-            $this->info("🔄 Reseteados {$reseteados} registros para el próximo año.");
+            $this->info("🔄 Reseteados {$reseteados} registros de cumpleaños pasados.");
         }
     }
 }
