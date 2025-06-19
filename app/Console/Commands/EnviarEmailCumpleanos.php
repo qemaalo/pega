@@ -17,7 +17,7 @@ class EnviarEmailCumpleanos extends Command
     public function handle()
     {
         $modoTest = $this->option('test');
-        $emailDestino = 'grupo@ingomar.cl'; // CAMBIA ESTE EMAIL SI NECESITAS
+        $emailDestino = 'ingomar@ingomar.cl'; // CAMBIA ESTE EMAIL SI NECESITAS
 
         if ($modoTest) {
             $this->info('🧪 MODO DE PRUEBA ACTIVADO - No se enviarán emails reales');

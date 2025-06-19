@@ -28,6 +28,11 @@
                 </div>
                 
                 <div class="filter-group">
+                    <label for="search-cargo">Buscar por cargo:</label>
+                    <input type="text" id="search-cargo" placeholder="Escriba el cargo..." class="filter-input">
+                </div>
+                
+                <div class="filter-group">
                     <button type="button" id="clear-filters" class="btn btn-secondary">
                         <span class="btn-icon">🗑️</span>
                         Limpiar
@@ -50,6 +55,7 @@
                     <tr>
                         <th class="col-rut">RUT</th>
                         <th class="col-nombre">Nombre</th>
+                        <th class="col-cargo">Cargo</th>
                         <th class="col-fecha">Nacimiento</th>
                         <th class="col-edad">Edad</th>
                         <th class="col-vinculado">Vinculado</th>
@@ -64,6 +70,7 @@
                             data-nombre="{{ strtolower($cumple->nombre_completo) }}"
                             data-rut="{{ strtolower(str_replace(['.', '-', ' '], '', $cumple->rut)) }}"
                             data-rut-display="{{ strtolower($cumple->rut) }}"
+                            data-cargo="{{ strtolower($cumple->cargo ?? '') }}"
                             data-vinculado="{{ $cumple->vinculado_empresa ? 'empresa' : 'externo' }}"
                             data-email="{{ $cumple->email_enviado ? 'enviado' : 'pendiente' }}"
                             data-mes="{{ \Carbon\Carbon::parse($cumple->fecha_cumpleanos)->month }}">
@@ -74,6 +81,9 @@
                                 <div class="nombre-container">
                                     <span class="nombre-text">{{ $cumple->nombre_completo }}</span>
                                 </div>
+                            </td>
+                            <td class="cell-cargo">
+                                <span class="cargo-text">{{ $cumple->cargo ?? 'Sin cargo' }}</span>
                             </td>
                             <td class="cell-fecha">
                                 <span class="fecha-text">
@@ -143,7 +153,7 @@
                                         </span>
                                     @endif
 
-                                    {{-- Botón de desvinculación/vinculación CORREGIDO --}}
+                                    {{-- Botón de desvinculación/vinculación --}}
                                     @if($cumple->vinculado_empresa)
                                         <form method="POST" action="{{ route('cumpleanos.desvincular', $cumple->id) }}" 
                                               style="display: inline;">
@@ -183,7 +193,7 @@
                         </tr>
                     @empty
                         <tr id="empty-row">
-                            <td colspan="8" class="empty-state">
+                            <td colspan="9" class="empty-state">
                                 No hay cumpleaños registrados en el sistema.
                             </td>
                         </tr>
@@ -274,6 +284,20 @@
                                placeholder="Pérez González" 
                                value="{{ old('apellido') }}" 
                                required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label for="modal-cargo" class="input-label">
+                            <span class="label-text">Cargo</span>
+                        </label>
+                        <input type="text" 
+                               id="modal-cargo" 
+                               name="cargo" 
+                               class="form-input"
+                               placeholder="Ej: Gerente, Analista, etc." 
+                               value="{{ old('cargo') }}"
+                               maxlength="33">
+                        <span class="input-helper">Máximo 33 caracteres (opcional)</span>
                     </div>
                     
                     <div class="input-group">
@@ -384,8 +408,8 @@
 
     .filter-row {
         display: grid;
-        grid-template-columns: 1fr 1fr auto;
-        gap: 25px;
+        grid-template-columns: 1fr 1fr 1fr auto;
+        gap: 20px;
         align-items: end;
     }
 
@@ -926,14 +950,15 @@
         table-layout: fixed;
     }
 
-    .col-rut { width: 12%; }
-    .col-nombre { width: 25%; }
-    .col-fecha { width: 12%; }
+    .col-rut { width: 10%; }
+    .col-nombre { width: 20%; }
+    .col-cargo { width: 15%; }
+    .col-fecha { width: 10%; }
     .col-edad { width: 8%; }
-    .col-vinculado { width: 10%; }
-    .col-email { width: 10%; }
-    .col-proximo { width: 12%; }
-    .col-acciones { width: 15%; }
+    .col-vinculado { width: 8%; }
+    .col-email { width: 8%; }
+    .col-proximo { width: 10%; }
+    .col-acciones { width: 11%; }
 
     .data-table th {
         background-color: #f8f9fa;
@@ -1183,6 +1208,7 @@
         .col-proximo { width: 15%; }
         .col-edad { width: 10%; }
         .col-vinculado { width: 15%; }
+        .col-cargo { width: 20%; }
         
         .modal-container {
             width: 95%;
@@ -1216,9 +1242,10 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Variables para filtros simplificados
+    // Variables para filtros actualizados
     const searchNombre = document.getElementById('search-nombre');
     const searchRut = document.getElementById('search-rut');
+    const searchCargo = document.getElementById('search-cargo');
     const clearButton = document.getElementById('clear-filters');
     const table = document.getElementById('cumpleanos-table');
     const tbody = table.querySelector('tbody');
@@ -1232,6 +1259,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function filterTable() {
         const nombreTerm = searchNombre.value.toLowerCase().trim();
         const rutTerm = searchRut.value.toLowerCase().replace(/[.\-\s]/g, '').trim();
+        const cargoTerm = searchCargo.value.toLowerCase().trim();
         
         const rows = tbody.querySelectorAll('.table-row');
         let visibleCount = 0;
@@ -1240,6 +1268,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const nombre = row.dataset.nombre;
             const rut = row.dataset.rut;
             const rutDisplay = row.dataset.rutDisplay;
+            const cargo = row.dataset.cargo;
 
             let showRow = true;
 
@@ -1248,6 +1277,10 @@ document.addEventListener('DOMContentLoaded', function() {
             }
 
             if (rutTerm && !rut.includes(rutTerm) && !rutDisplay.includes(rutTerm)) {
+                showRow = false;
+            }
+
+            if (cargoTerm && !cargo.includes(cargoTerm)) {
                 showRow = false;
             }
 
@@ -1275,6 +1308,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function clearFilters() {
         searchNombre.value = '';
         searchRut.value = '';
+        searchCargo.value = '';
         filterTable();
         searchNombre.focus();
     }
@@ -1288,6 +1322,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     searchNombre.addEventListener('input', debounceFilter);
     searchRut.addEventListener('input', debounceFilter);
+    searchCargo.addEventListener('input', debounceFilter);
     clearButton.addEventListener('click', clearFilters);
 
     const successToast = document.getElementById('success-toast');

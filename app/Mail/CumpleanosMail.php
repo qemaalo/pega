@@ -31,9 +31,11 @@ class CumpleanosMail extends Mailable
                     ->subject('🎉 ¡Hoy es el cumpleaños de ' . $this->cumpleano->nombre_completo . '!')
                     ->with([
                         'nombre' => $this->cumpleano->nombre_completo,
+                        'cargo' => $this->cumpleano->cargo,
                         'fechaCumpleanos' => $this->cumpleano->fecha_cumpleanos,
-                        'edad' => $this->cumpleano->edad_actual + 1, // Edad que cumple hoy
+                        'edad' => $this->cumpleano->edad_actual + 1,
                         'vinculadoEmpresa' => $this->cumpleano->vinculado_empresa,
+                        'cumpleano' => $this->cumpleano,
                     ]);
     }
 }

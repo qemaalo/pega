@@ -18,6 +18,7 @@ class Cumpleano extends Model
         'nombre',
         'apellido',
         'fecha_cumpleanos',
+        'cargo',
         'edad',
         'vinculado_empresa',
         'email_enviado',
@@ -64,14 +65,13 @@ class Cumpleano extends Model
     }
 
     /**
-     * Obtener los días restantes para el próximo cumpleaños - CORREGIDO
+     * Obtener los días restantes para el próximo cumpleaños
      */
     public function getDiasRestantesAttribute()
     {
-        $hoy = Carbon::now()->startOfDay(); // Usar inicio del día para comparación exacta
+        $hoy = Carbon::now()->startOfDay();
         $fechaNacimiento = Carbon::parse($this->fecha_cumpleanos);
         
-        // Crear fecha de cumpleaños para este año
         $cumpleanosEsteAno = Carbon::create(
             $hoy->year, 
             $fechaNacimiento->month, 
@@ -79,17 +79,15 @@ class Cumpleano extends Model
             0, 0, 0
         );
         
-        // Si el cumpleaños de este año ya pasó, usar el del próximo año
         if ($cumpleanosEsteAno->lt($hoy)) {
             $cumpleanosEsteAno->addYear();
         }
         
-        // Calcular diferencia en días
         return $hoy->diffInDays($cumpleanosEsteAno);
     }
 
     /**
-     * Verificar si hoy es el cumpleaños - CORREGIDO
+     * Verificar si hoy es el cumpleaños
      */
     public function esCumpleanosHoy()
     {
@@ -100,14 +98,13 @@ class Cumpleano extends Model
     }
 
     /**
-     * Obtener los próximos cumpleaños (siguiente fecha de cumpleaños) - CORREGIDO
+     * Obtener los próximos cumpleaños (siguiente fecha de cumpleaños)
      */
     public function getProximoCumpleanosAttribute()
     {
         $hoy = Carbon::now()->startOfDay();
         $fechaNacimiento = Carbon::parse($this->fecha_cumpleanos);
         
-        // Crear fecha de cumpleaños para este año
         $cumpleanosEsteAno = Carbon::create(
             $hoy->year, 
             $fechaNacimiento->month, 
@@ -115,7 +112,6 @@ class Cumpleano extends Model
             0, 0, 0
         );
         
-        // Si el cumpleaños de este año ya pasó, usar el del próximo año
         if ($cumpleanosEsteAno->lt($hoy)) {
             $cumpleanosEsteAno->addYear();
         }

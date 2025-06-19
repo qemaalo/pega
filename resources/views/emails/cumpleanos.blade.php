@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cumpleaños de {{ $nombre }}</title>
+    <title>¡Feliz Cumpleaños {{ $nombre }}!</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -19,147 +19,81 @@
         .email-container {
             background: white;
             border-radius: 12px;
-            padding: 30px;
+            padding: 40px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.1);
             border: 1px solid #e9ecef;
-        }
-        
-        .header {
             text-align: center;
-            margin-bottom: 30px;
-            padding-bottom: 20px;
-            border-bottom: 2px solid #f8f9fa;
+            position: relative;
         }
         
-        .birthday-icon {
-            font-size: 4rem;
-            margin-bottom: 15px;
-            display: block;
+        .emojis-header {
+            font-size: 2rem;
+            margin: 20px 0;
+            line-height: 1.2;
         }
         
-        .header h1 {
-            color: #2c3e50;
-            margin: 0;
+        .birthday-title {
             font-size: 1.8rem;
-        }
-        
-        .birthday-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            padding: 30px;
-            border-radius: 12px;
-            text-align: center;
-            margin: 25px 0;
-        }
-        
-        .birthday-card h2 {
-            margin: 0 0 15px 0;
-            font-size: 1.8rem;
-            font-weight: 600;
-        }
-        
-        .birthday-card .age {
-            font-size: 2.5rem;
             font-weight: bold;
-            margin: 15px 0;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            color: #2c3e50;
+            margin: 20px 0;
+            text-transform: uppercase;
         }
         
-        .birthday-card .message {
-            font-size: 1.2rem;
-            margin-top: 15px;
-            opacity: 0.95;
-        }
-        
-        .details {
-            background: #f8f9fa;
-            padding: 25px;
-            border-radius: 10px;
-            margin: 25px 0;
-        }
-        
-        .details h3 {
-            margin-top: 0;
-            color: #495057;
-            font-size: 1.2rem;
-            margin-bottom: 20px;
-        }
-        
-        .detail-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 12px 0;
-            padding: 8px 0;
-            border-bottom: 1px solid #dee2e6;
-        }
-        
-        .detail-item:last-child {
-            border-bottom: none;
-        }
-        
-        .detail-label {
-            font-weight: 600;
-            color: #495057;
-        }
-        
-        .detail-value {
-            color: #6c757d;
-        }
-        
-        .badge {
-            display: inline-block;
-            padding: 6px 12px;
-            border-radius: 20px;
-            font-size: 0.85rem;
-            font-weight: 600;
-        }
-        
-        .badge-empresa {
-            background-color: #d1ecf1;
-            color: #0c5460;
-            border: 1px solid #bee5eb;
-        }
-        
-        .badge-externo {
-            background-color: #f8f9fa;
-            color: #6c757d;
-            border: 1px solid #dee2e6;
-        }
-        
-        .celebration {
-            background: linear-gradient(135deg, #ffeaa7 0%, #fab1a0 100%);
-            padding: 20px;
-            border-radius: 10px;
-            text-align: center;
-            margin: 25px 0;
-            border: 2px solid #fdcb6e;
-        }
-        
-        .celebration h3 {
-            margin: 0 0 10px 0;
-            color: #2d3436;
+        .birthday-announcement {
             font-size: 1.3rem;
+            color: #495057;
+            margin: 30px 0;
+            font-weight: 600;
         }
         
-        .celebration p {
-            margin: 0;
-            color: #636e72;
+        .employee-name {
+            color:rgb(0, 0, 0);
+            font-weight: 900; /* Más negrita que bold */
+            text-transform: uppercase;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1); /* Sombra sutil para más presencia */
+            letter-spacing: 0.5px; /* Espaciado para mayor impacto */
+        }
+        
+        .employee-cargo {
+            color: #3498db;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        
+        .birthday-message {
             font-size: 1.1rem;
+            color: #2c3e50;
+            margin: 30px 0;
+            line-height: 1.6;
+            text-align: justify;
+            padding: 0 20px;
         }
         
-        .footer {
-            text-align: center;
+        .employee-name-message {
+            color: #e74c3c;
+            font-weight: 900; /* Más negrita que bold */
+            text-transform: uppercase;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1); /* Sombra sutil */
+            letter-spacing: 0.5px; /* Espaciado para mayor impacto */
+        }
+        
+        .logo-container {
+            margin: 40px -30px 20px -30px; /* Márgenes negativos para casi tocar los bordes */
+            padding-top: 30px;
+            border-top: 2px solid #f8f9fa;
+        }
+        
+        .logo {
+            max-width: calc(100% - 20px); /* Casi todo el ancho disponible */
+            width: 95%; /* 95% del contenedor */
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .footer-space {
             margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #dee2e6;
-            color: #6c757d;
-            font-size: 0.9rem;
-        }
-        
-        .emoji {
-            font-size: 1.2rem;
-            margin: 0 5px;
         }
         
         @media (max-width: 600px) {
@@ -168,83 +102,95 @@
             }
             
             .email-container {
-                padding: 20px;
+                padding: 30px 20px;
             }
             
-            .birthday-card {
-                padding: 20px;
-            }
-            
-            .birthday-card h2 {
+            .emojis-header {
                 font-size: 1.5rem;
             }
             
-            .birthday-card .age {
-                font-size: 2rem;
+            .birthday-title {
+                font-size: 1.4rem;
             }
             
-            .details {
-                padding: 20px;
+            .birthday-announcement {
+                font-size: 1.1rem;
+            }
+            
+            .birthday-message {
+                font-size: 1rem;
+                padding: 0 10px;
+            }
+            
+            .logo-container {
+                margin: 40px -15px 20px -15px; /* Ajuste para móvil */
+            }
+            
+            .logo {
+                width: 98%; /* Aún más grande en móvil */
+                max-width: calc(100% - 10px);
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .email-container {
+                padding: 20px 15px;
+            }
+            
+            .emojis-header {
+                font-size: 1.2rem;
+            }
+            
+            .birthday-title {
+                font-size: 1.2rem;
+            }
+            
+            .birthday-announcement {
+                font-size: 1rem;
+            }
+            
+            .birthday-message {
+                font-size: 0.9rem;
+                text-align: left;
+            }
+            
+            .logo-container {
+                margin: 30px -10px 15px -10px; /* Ajuste para pantallas muy pequeñas */
+            }
+            
+            .logo {
+                width: 99%; /* Máximo posible en pantallas pequeñas */
+                max-width: calc(100% - 5px);
             }
         }
     </style>
 </head>
 <body>
     <div class="email-container">
-        <div class="header">
-            <span class="birthday-icon">🎉</span>
-            <h1>¡Cumpleaños de Hoy!</h1>
+        <!-- Emojis de encabezado -->
+        <div class="emojis-header">
+            🎁🎊🎉🍬🎂 ¡Happy Birthday! ¡Feliz Cumpleaños! 🎁🎊🎉🍬🎂
         </div>
         
-        <div class="birthday-card">
-            <h2>{{ $nombre }}</h2>
-            <div class="age">{{ $edad }} años</div>
-            <div class="message">¡Feliz Cumpleaños! <span class="emoji">🎊</span></div>
+        <!-- Anuncio del cumpleaños -->
+        <div class="birthday-announcement">
+            En el día de hoy está de fiesta de cumpleaños: 
+            <span class="employee-name">{{ strtoupper($nombre) }}</span>@if($cargo), (<span class="employee-cargo">{{ strtoupper($cargo) }}</span>)@endif
         </div>
         
-        <div class="celebration">
-            <h3>🎁 ¡No olvides felicitar a {{ explode(' ', $nombre)[0] }}!</h3>
-            <p>Hoy es un día especial para celebrar</p>
+        <!-- Mensaje personalizado -->
+        <div class="birthday-message">
+            <span class="employee-name-message">{{ strtoupper($nombre) }}</span>: No se trata de una simple celebración, es el día de tu cumpleaños, es por ello que te deseamos las mejores intenciones en este día.
         </div>
         
-        <div class="details">
-            <h3>📋 Información del Cumpleañero</h3>
-            
-            <div class="detail-item">
-                <span class="detail-label">Nombre completo:</span>
-                <span class="detail-value">{{ $nombre }}</span>
-            </div>
-            
-            <div class="detail-item">
-                <span class="detail-label">Fecha de nacimiento:</span>
-                <span class="detail-value">{{ \Carbon\Carbon::parse($fechaCumpleanos)->format('d/m/Y') }}</span>
-            </div>
-            
-            <div class="detail-item">
-                <span class="detail-label">Edad que cumple:</span>
-                <span class="detail-value">{{ $edad }} años</span>
-            </div>
-            
-            <div class="detail-item">
-                <span class="detail-label">Vinculación:</span>
-                <span class="detail-value">
-                    @if($vinculadoEmpresa)
-                        <span class="badge badge-empresa">Empleado de la empresa</span>
-                    @else
-                        <span class="badge badge-externo">Persona externa</span>
-                    @endif
-                </span>
-            </div>
+        <!-- Logo de INGOMAR - MÁS GRANDE -->
+        <div class="logo-container">
+            <img src="data:image/jpeg;base64,{{ base64_encode(file_get_contents(public_path('images/ingomar-logo.jpg'))) }}" 
+                 alt="INGOMAR Logo" 
+                 class="logo">
         </div>
         
-        <div class="footer">
-            <p>
-                <span class="emoji">🤖</span> 
-                Recordatorio automático enviado el {{ now()->format('d/m/Y') }} a las {{ now()->format('H:i') }}
-                <br>
-                Sistema de Gestión de Cumpleaños
-            </p>
-        </div>
+        <div class="footer-space"></div>
     </div>
 </body>
 </html>

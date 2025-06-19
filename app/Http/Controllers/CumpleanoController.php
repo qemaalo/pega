@@ -29,6 +29,7 @@ class CumpleanoController extends Controller
             'nombre' => 'required|string|max:100',
             'apellido' => 'required|string|max:100',
             'fecha_cumpleanos' => 'required|date',
+            'cargo' => 'nullable|string|max:33',
             'vinculado_empresa' => 'sometimes|boolean',
         ], [
             'rut.required' => 'El RUT es obligatorio.',
@@ -40,6 +41,7 @@ class CumpleanoController extends Controller
             'apellido.max' => 'El apellido no puede tener más de 100 caracteres.',
             'fecha_cumpleanos.required' => 'La fecha de cumpleaños es obligatoria.',
             'fecha_cumpleanos.date' => 'La fecha debe ser válida.',
+            'cargo.max' => 'El cargo no puede tener más de 33 caracteres.',
         ]);
 
         try {
@@ -48,6 +50,7 @@ class CumpleanoController extends Controller
                 'nombre' => $validated['nombre'],
                 'apellido' => $validated['apellido'],
                 'fecha_cumpleanos' => $validated['fecha_cumpleanos'],
+                'cargo' => $validated['cargo'] ?? null,
                 'vinculado_empresa' => $request->has('vinculado_empresa'),
                 'email_enviado' => false,
             ]);
