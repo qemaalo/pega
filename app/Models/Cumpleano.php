@@ -138,6 +138,18 @@ class Cumpleano extends Model
     }
 
     /**
+     * Scope para obtener cumpleaños de hoy de empleados vinculados
+     */
+    public function scopeCumpleanosHoyVinculados($query)
+    {
+        $hoy = Carbon::now();
+        return $query->whereMonth('fecha_cumpleanos', $hoy->month)
+                     ->whereDay('fecha_cumpleanos', $hoy->day)
+                     ->where('vinculado_empresa', true)
+                     ->where('email_enviado', false);
+    }
+
+    /**
      * Scope para obtener emails no enviados
      */
     public function scopeEmailsNoEnviados($query)

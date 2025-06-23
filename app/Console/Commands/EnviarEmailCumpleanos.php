@@ -12,7 +12,7 @@ class EnviarEmailCumpleanos extends Command
 {
     protected $signature = 'cumpleanos:enviar-emails {--test : Modo de prueba sin enviar emails reales}';
 
-    protected $description = 'Envía emails automáticos cuando es el cumpleaños de alguien';
+    protected $description = 'Envía emails automáticos cuando es el cumpleaños de alguien vinculado a la empresa';
 
     public function handle()
     {
@@ -24,23 +24,30 @@ class EnviarEmailCumpleanos extends Command
         }
 
         $this->info('🎂 Verificando cumpleaños de hoy...');
-        $cumpleanosHoy = $this->getCumpleanosHoy();
+        
+        // Obtener todos los cumpleaños de hoy (vinculados y no vinculados)
+        $todosCumpleanosHoy = $this->getTodosCumpleanosHoy();
+        $cumpleanosVinculados = $this->getCumpleanosVinculadosHoy();
+        $cumpleanosDesvinculados = $todosCumpleanosHoy->where('vinculado_empresa', false);
 
-        if ($cumpleanosHoy->isEmpty()) {
-            $this->info('✅ No hay cumpleaños para notificar hoy.');
+        // Mostrar estadísticas
+        $this->mostrarEstadisticas($todosCumpleanosHoy, $cumpleanosVinculados, $cumpleanosDesvinculados);
+
+        if ($cumpleanosVinculados->isEmpty()) {
+            $this->info('✅ No hay cumpleaños de empleados vinculados para notificar hoy.');
             return Command::SUCCESS;
         }
 
-        $this->info("🎉 ¡Encontrados {$cumpleanosHoy->count()} cumpleaños para HOY!");
+        $this->info("🎉 ¡Enviando emails para {$cumpleanosVinculados->count()} empleados vinculados!");
 
         $emailsEnviados = 0;
 
-        foreach ($cumpleanosHoy as $cumpleano) {
-            // Usar el accessor correctamente
+        foreach ($cumpleanosVinculados as $cumpleano) {
             $nombreCompleto = $cumpleano->nombre_completo;
             $edadActual = $cumpleano->edad_actual;
+            $cargo = $cumpleano->cargo ?? 'Sin cargo';
             
-            $this->line("   🎂 {$nombreCompleto} cumple " . ($edadActual + 1) . " años");
+            $this->line("   🎂 {$nombreCompleto} ({$cargo}) cumple " . ($edadActual + 1) . " años");
 
             if (!$modoTest) {
                 $resultado = $this->enviarEmail($emailDestino, $cumpleano, $nombreCompleto);
@@ -71,14 +78,56 @@ class EnviarEmailCumpleanos extends Command
         return Command::SUCCESS;
     }
 
-    private function getCumpleanosHoy()
+    /**
+     * Obtener TODOS los cumpleaños de hoy (para estadísticas)
+     */
+    private function getTodosCumpleanosHoy()
     {
         $hoy = Carbon::now();
 
         return Cumpleano::whereMonth('fecha_cumpleanos', $hoy->month)
                         ->whereDay('fecha_cumpleanos', $hoy->day)
+                        ->get();
+    }
+
+    /**
+     * Obtener solo los cumpleaños de empleados VINCULADOS de hoy
+     */
+    private function getCumpleanosVinculadosHoy()
+    {
+        $hoy = Carbon::now();
+
+        return Cumpleano::whereMonth('fecha_cumpleanos', $hoy->month)
+                        ->whereDay('fecha_cumpleanos', $hoy->day)
+                        ->where('vinculado_empresa', true) // ✅ SOLO VINCULADOS
                         ->where('email_enviado', false) // Solo los que NO han sido notificados
                         ->get();
+    }
+
+    /**
+     * Mostrar estadísticas de cumpleaños del día
+     */
+    private function mostrarEstadisticas($todos, $vinculados, $desvinculados)
+    {
+        $totalHoy = $todos->count();
+        $totalVinculados = $vinculados->count();
+        $totalDesvinculados = $desvinculados->count();
+
+        $this->info("📊 Estadísticas del día:");
+        $this->line("   👥 Total cumpleaños hoy: {$totalHoy}");
+        $this->line("   🏢 Empleados vinculados: {$totalVinculados}");
+        $this->line("   🚫 Empleados desvinculados: {$totalDesvinculados}");
+
+        // Mostrar empleados desvinculados si los hay
+        if ($totalDesvinculados > 0) {
+            $this->warn("⚠️  Empleados desvinculados (NO se enviarán emails):");
+            foreach ($desvinculados as $desvinculado) {
+                $cargo = $desvinculado->cargo ?? 'Sin cargo';
+                $this->line("   🚫 {$desvinculado->nombre_completo} ({$cargo})");
+            }
+        }
+
+        $this->line(''); // Línea en blanco para separar
     }
 
     private function enviarEmail($emailDestino, $cumpleano, $nombreCompleto)
