@@ -251,6 +251,38 @@
                 padding: 12px 20px;
             }
         }
+        
+        /* Estilos específicos para tareas inactivas */
+        .gantt .bar.task-inactive {
+            fill: #bdbdbd !important;
+            stroke: #9e9e9e !important;
+            opacity: 0.6 !important;
+            cursor: not-allowed !important;
+        }
+        
+        .gantt .bar.task-inactive:hover {
+            fill: #bdbdbd !important;
+            stroke: #9e9e9e !important;
+            opacity: 0.6 !important;
+        }
+        
+        .gantt .bar-progress.task-inactive {
+            fill: #757575 !important;
+        }
+        
+        .gantt .handle.task-inactive {
+            display: none !important;
+        }
+        
+        /* Tooltip para tareas inactivas */
+        .gantt .popup-wrapper.task-inactive {
+            background-color: #f5f5f5 !important;
+            border-left: 4px solid #bdbdbd !important;
+        }
+        
+        .gantt .popup-wrapper.task-inactive .title {
+            color: #757575 !important;
+        }
     </style>
 </head>
 <body>
@@ -436,9 +468,9 @@
             console.log('debouncedSave llamado:', task.name, start, end);
             
             if (task.readonly) {
-                showNotification('Esta tarea está inactiva', 'error');
-                loadTasks();
-                return;
+                showNotification('Esta tarea está inactiva y no se puede modificar', 'error');
+                loadTasks(); // Recargar para restaurar posición original
+                return false; // Prevenir el cambio
             }
             
             clearTimeout(debounceTimer);
@@ -468,14 +500,30 @@
                             on_click: function(task) {
                                 if (task.readonly) {
                                     showNotification('Tarea inactiva - solo lectura', 'warning');
+                                    return false;
                                 }
                             },
                             on_progress_change: function(task, progress) {
                                 if (task.readonly) {
-                                    showNotification('Tarea inactiva - solo lectura', 'warning');
+                                    showNotification('Tarea inactiva - no se puede cambiar el progreso', 'warning');
                                     return false;
                                 }
                                 console.log('Progreso cambiado:', task.name, progress);
+                            },
+                            custom_popup_html: function(task) {
+                                const status = task.readonly ? 'INACTIVA' : 'ACTIVA';
+                                const statusClass = task.readonly ? 'task-inactive' : 'task-active';
+                                
+                                return `
+                                    <div class="popup-wrapper ${statusClass}">
+                                        <div class="title">${task.name}</div>
+                                        <div class="subtitle">Estado: ${status}</div>
+                                        <div class="subtitle">Inicio: ${task.start}</div>
+                                        <div class="subtitle">Fin: ${task.end}</div>
+                                        <div class="subtitle">Progreso: ${task.progress}%</div>
+                                        ${task.readonly ? '<div class="subtitle" style="color: #f44336; font-weight: bold;">⚠️ No editable</div>' : ''}
+                                    </div>
+                                `;
                             }
                         });
                         

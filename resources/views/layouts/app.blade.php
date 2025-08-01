@@ -33,29 +33,39 @@
             background-color: var(--light-color);
             color: var(--dark-color);
             line-height: 1.6;
+            overflow-x: hidden;
+            margin: 0;
+            padding: 0;
+            height: 100vh;
         }
         
         .app-container {
             min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
+            width: 100%;
+            max-width: 100vw;
+            overflow: hidden;
         }
         
         .main-header {
             background-color: white;
-            padding: 15px 30px;
+            padding: 5px 15px;
             box-shadow: 0 2px 10px rgba(0,0,0,0.05);
             position: sticky;
             top: 0;
             z-index: 100;
+            flex-shrink: 0;
         }
         
         .header-content {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            max-width: 1300px;
+            max-width: 1920px;
             margin: 0 auto;
+            padding: 0 10px;
         }
         
         .app-logo {
@@ -66,11 +76,13 @@
         }
         
         .main-content {
-            flex-grow: 1;
-            max-width: 1300px;
-            margin: 0 auto;
-            width: 100%;
-            padding: 20px;
+            flex: 1;
+            max-width: 100vw;
+            margin: 0;
+            width: 100vw;
+            padding: 0;
+            overflow: hidden;
+            height: calc(100vh - 60px);
         }
         
         .main-footer {
@@ -84,8 +96,8 @@
         
         /* Mensajes flash */
         .alert {
-            padding: 12px 20px;
-            margin-bottom: 20px;
+            padding: 8px 15px; /* Reducido para maximizar espacio */
+            margin-bottom: 5px; /* Reducido */
             border-radius: 6px;
             font-weight: 500;
         }
@@ -100,6 +112,21 @@
             background-color: rgba(244, 67, 54, 0.1);
             color: var(--danger-color);
             border: 1px solid rgba(244, 67, 54, 0.2);
+        }
+        
+        /* Optimización para resolución 1920x1080 */
+        @media (min-width: 1920px) {
+            .main-content {
+                max-width: 100vw;
+                padding: 0;
+            }
+            .header-content {
+                max-width: 1920px;
+                padding: 0 10px;
+            }
+            .alert {
+                margin-bottom: 5px;
+            }
         }
     </style>
     

@@ -27,16 +27,17 @@ class FrappeController extends Controller
             $formattedTasks = $tasks->map(function ($task) {
                 $startDate = Carbon::parse($task->finicio);
                 $endDate = Carbon::parse($task->ftermino);
-                $isActive = $task->activo ?? true;
+                $isActive = $task->isActive(); // Usar el método del modelo
                 
                 return [
                     'id' => (string) $task->id,
-                    'name' => 'OP ' . $task->op,
+                    'name' => 'OP ' . $task->op . ($isActive ? '' : ' (Inactiva)'),
                     'start' => $startDate->format('Y-m-d'),
                     'end' => $endDate->format('Y-m-d'),
                     'progress' => $task->fterminoreal ? 100 : 0,
                     'dependencies' => '',
-                    'readonly' => !$isActive
+                    'readonly' => !$isActive,
+                    'custom_class' => !$isActive ? 'task-inactive' : 'task-active'
                 ];
             });
 
@@ -62,45 +63,35 @@ class FrappeController extends Controller
                 ], 404);
             }
             
-            // Verificar si está activa
-            if (!$task->activo) {
+            // Verificar si está activa usando el método del modelo
+            if (!$task->isActive()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'No se puede modificar una tarea inactiva'
-                ], 400);
+                    'message' => 'No se puede modificar una tarea inactiva. La tarea está deshabilitada.'
+                ], 403); // Cambiar a 403 Forbidden
             }
             
-            // Obtener el comentario si se proporcionó
-            $task->comentario = $comment = $request->input('comment', '');
+            // Validar las fechas
+            $request->validate([
+                'start' => 'required|date',
+                'end' => 'required|date|after_or_equal:start',
+                'comment' => 'nullable|string|max:500'
+            ]);
             
-            // Guardar las fechas anteriores para el historial
+            // Guardar fechas anteriores para el historial
             $oldStart = $task->finicio;
             $oldEnd = $task->ftermino;
+            
+            // Obtener el comentario si se proporcionó
+            $comment = $request->input('comment', '');
             
             // Actualizar fechas
             $task->finicio = $request->start;
             $task->ftermino = $request->end;
             
-            // Si hay comentario, añadirlo a un campo de comentarios o historial
-            // Aquí puedes decidir cómo quieres almacenar los comentarios
-            // Por ejemplo, en un campo 'comentarios' o en una tabla separada de historial
+            // Si hay comentario, añadirlo
             if (!empty($comment)) {
-                // Opción 1: Guardar en un campo de comentarios (si existe)
-                if (isset($task->comentarios)) {
-                    $task->comentarios = $comment;
-                }
-                
-                // Opción 2: Crear un registro de historial (si tienes una tabla de historial)
-                // HistorialCambios::create([
-                //     'compromop_id' => $task->id,
-                //     'fecha_anterior_inicio' => $oldStart,
-                //     'fecha_anterior_fin' => $oldEnd,
-                //     'fecha_nueva_inicio' => $request->start,
-                //     'fecha_nueva_fin' => $request->end,
-                //     'comentario' => $comment,
-                //     'usuario_id' => auth()->id(),
-                //     'fecha_cambio' => now()
-                // ]);
+                $task->comentario = $comment;
             }
             
             $task->save();
@@ -108,9 +99,21 @@ class FrappeController extends Controller
             return response()->json([
                 'success' => true,
                 'message' => 'Fechas actualizadas correctamente' . (!empty($comment) ? ' con comentario' : ''),
-                'comment' => $comment
+                'comment' => $comment,
+                'task' => [
+                    'id' => $task->id,
+                    'start' => $task->finicio->format('Y-m-d'),
+                    'end' => $task->ftermino->format('Y-m-d'),
+                    'active' => $task->isActive()
+                ]
             ]);
             
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Datos inválidos',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,

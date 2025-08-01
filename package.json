@@ -16,6 +16,7 @@
         "postcss": "^8.1.14"
     },
     "dependencies": {
-        "frappe-gantt": "^1.0.3"
+        "frappe-gantt": "^1.0.3",
+        "jsgantt-improved": "^2.8.10"
     }
 }

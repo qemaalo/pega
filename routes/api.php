@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\FrappeController;
+use App\Http\Controllers\WhatsController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 
@@ -24,3 +25,8 @@ Route::get('/compromops', [App\Http\Controllers\FrappeController::class, 'getTas
 
 // Ruta para actualizar fechas de una tarea específica
 Route::post('/compromops/{id}/update-dates', [App\Http\Controllers\FrappeController::class, 'updateDates']);
+
+
+Route::get('/envia',[WhatsController::class,'enviaWhatsApp']);
+
+Route::get('/envia/app',[WhatsController::class,'enviarWhatsApp']);
