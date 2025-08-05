@@ -16,6 +16,21 @@
             </div>
         </form>
         
+        <!-- Controles de drag mejorados -->
+        <div class="gantt-drag-controls">
+            <span class="drag-info">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 8v8"/>
+                    <path d="M8 12h8"/>
+                </svg>
+                <strong>Arrastrar actividades:</strong>
+                <span class="drag-mode">Normal: Libre</span> | 
+                <span class="drag-mode">Shift + Drag: Solo horizontal</span> | 
+                <span class="drag-mode">Alt + Drag: Solo vertical</span>
+            </span>
+        </div>
+        
         <!-- Nueva navegación de semestres -->
         <div class="gantt-month-navigation">
             <button id="prevSemester" class="gantt-nav-btn gantt-nav-btn-prev">
@@ -107,88 +122,250 @@
                     <div class="gantt-timeline" id="ganttTimeline" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; overflow-x: hidden !important;">
                         <div class="gantt-scroll-content" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; position: relative; height: auto; overflow-x: hidden !important;">
                             <div class="gantt-grid" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; position: relative; overflow-x: hidden !important;">
-                                @if(isset($centros))
-                                    @php $maquinariaPositions = []; $currentPosition = 0; @endphp
-                                    @foreach($centros as $centro)
-                                        @php $currentPosition += 54; @endphp
-                                        @foreach($centro->maquinarias as $maquinaria)
-                                            @php $maquinariaPositions[$maquinaria->id] = $currentPosition + 15; @endphp
-                                            <div class="gantt-grid-row" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; height: 60px; position: relative; left: 0; display: flex;" data-maquinaria-id="{{ $maquinaria->id }}">
-                                                @for ($i = 0; $i < $totalDays; $i++)
-                                                    @php
-                                                        $currentDate = $startDate->copy()->addDays($i);
-                                                        $dayOfWeek = $currentDate->dayOfWeek;
-                                                        $isWeekend = ($dayOfWeek == 0 || $dayOfWeek == 6);
-                                                        $isFirstOfMonth = $currentDate->day == 1;
-                                                    @endphp
-                                                    <div class="gantt-grid-cell {{ $isWeekend ? 'weekend' : '' }} {{ $isFirstOfMonth ? 'first-of-month' : '' }}" style="width: 50px; min-width: 50px; height: 100%;"></div>
-                                                @endfor
-                                            </div>
-                                            @php $currentPosition += 60; @endphp
-                                        @endforeach
-                                    @endforeach
-                                @endif
+                                <!-- La grilla será renderizada dinámicamente por JavaScript -->
                             </div>
                             <!-- Barras de tareas -->
-                            @if(isset($tasks) && $tasks->count() > 0)
-                                @foreach($tasks as $task)
-                                    @php
-                                        if (!$task->finicio || !$task->ftermino) continue;
-                                        $taskStartDate = \Carbon\Carbon::parse($task->finicio);
-                                        $taskEndDate = \Carbon\Carbon::parse($task->ftermino);
-                                        $effectiveStart = $taskStartDate->copy();
-                                        $effectiveEnd = $taskEndDate->copy();
-                                        if ($effectiveStart->lt($startDate)) $effectiveStart = $startDate->copy();
-                                        if ($effectiveEnd->gt($endDate)) $effectiveEnd = $endDate->copy();
-                                        $taskStartDay = $startDate->diffInDays($effectiveStart);
-                                        $taskEndDay = $startDate->diffInDays($effectiveEnd);
-                                        $leftPosition = ($taskStartDay) * 50;
-                                        $width = ($taskEndDay - $taskStartDay + 1) * 50;
-                                        if ($width < 25) $width = 25;
-                                        $rowHeight = 60;
-                                        $barHeight = 45;
-                                        $topPosition = 0;
-                                        if ($task->maquinaria_id && isset($maquinariaPositions[$task->maquinaria_id])) {
-                                            // Centrar la barra en la fila: posición de la fila + (rowHeight / 2) - (barHeight / 2)
-                                            $topPosition = $maquinariaPositions[$task->maquinaria_id] + ($rowHeight / 2) - ($barHeight / 2);
-                                        }
-                                        $taskContent = "OP {$task->op}-{$task->linea}";
-                                        $barColor = '#4a6cf7';
-                                        if ($task->maquinaria && $task->maquinaria->centro) {
-                                            switch($task->maquinaria->centro->descripcion) {
-                                                case 'PRENSA': $barColor = '#ff6b6b'; break;
-                                                case 'REVESTIMIENTO': $barColor = '#4ecdc4'; break;
-                                                case 'POLIURETANO': $barColor = '#45b7d1'; break;
-                                                case 'TRAFILA': $barColor = '#96ceb4'; break;
-                                                case 'ANILLOS': $barColor = '#feca57'; break;
-                                            }
-                                        }
-                                    @endphp
-                                    <div class="gantt-task-bar" 
-                                         data-task-id="{{ $task->id }}"
-                                         data-start-date="{{ $taskStartDate->format('Y-m-d') }}"
-                                         data-end-date="{{ $taskEndDate->format('Y-m-d') }}"
-                                         data-maquinaria-id="{{ $task->maquinaria_id ?? '' }}"
-                                         data-activo="{{ $task->activo }}"
-                                         style="left: {{ $leftPosition }}px; width: {{ $width }}px; top: {{ $topPosition }}px; background-color: {{ $barColor }}; position: absolute; height: 45px;"
-                                         title="OP {{ $task->op }}-{{ $task->linea }} | {{ $task->maquinaria->nombre ?? 'Sin maquinaria' }} | {{ $taskStartDate->format('d/m') }} - {{ $taskEndDate->format('d/m') }}">
-                                        <div class="gantt-task-content">
-                                            <span class="gantt-task-label">{{ $taskContent }}</span>
-                                        </div>
-                                        @if($task->activo)
-                                            <div class="gantt-task-resizer gantt-task-resizer-left"></div>
-                                            <div class="gantt-task-resizer gantt-task-resizer-right"></div>
-                                        @endif
-                                    </div>
-                                @endforeach
-                            @endif
+                            <!-- Las barras de tareas serán renderizadas dinámicamente por JavaScript -->
                         </div>
                         <!-- Área para crear nuevas tareas -->
-                        <div id="newTaskArea" class="gantt-new-task-area"></div>
-                    </div>
+                        <!--<div id="newTaskArea" class="gantt-new-task-area"></div>-->
+<!-- Exportar datos como JSON para JS -->
+<script>
+    window.ganttData = {
+        centros: @json($centros),
+        tasks: @json($tasks),
+        startDate: '{{ $startDate->format('Y-m-d') }}',
+        endDate: '{{ $endDate->format('Y-m-d') }}',
+        totalDays: {{ $totalDays }}
+    };
+</script>
+
+<!-- Script para renderizar la grilla y las barras dinámicamente -->
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    
+    const ganttGrid = document.querySelector('.gantt-grid');
+    const ganttBody = document.getElementById('ganttBody');
+    const ganttTimeline = document.getElementById('ganttTimeline');
+    const sidebar = document.querySelector('.gantt-sidebar');
+    const { centros, tasks, startDate, endDate, totalDays } = window.ganttData;
+
+    // Utilidades de fecha
+    function addDays(dateStr, days) {
+        const d = new Date(dateStr);
+        d.setDate(d.getDate() + days);
+        return d;
+    }
+    function formatDate(date) {
+        return date.toISOString().slice(0,10);
+    }
+    function getDayOfWeek(date) {
+        return date.getDay();
+    }
+
+    // Renderizar grilla
+    function renderGrid() {
+        ganttGrid.innerHTML = '';
+        let maquinariaPositions = {};
+        let currentPosition = 0;
+        centros.forEach(centro => {
+            // Fila header del centro
+            const centroRow = document.createElement('div');
+            centroRow.className = 'gantt-grid-row gantt-grid-centro-header';
+            centroRow.style.height = '54px';
+            centroRow.style.minWidth = (totalDays * 50) + 'px';
+            centroRow.style.width = (totalDays * 50) + 'px';
+            centroRow.setAttribute('data-centro-id', centro.id);
+            centroRow.setAttribute('data-type', 'centro');
+            // Renderizar celdas para header
+            for (let i = 0; i < totalDays; i++) {
+                const currentDate = addDays(startDate, i);
+                const dayOfWeek = getDayOfWeek(currentDate);
+                const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                const isFirstOfMonth = (currentDate.getDate() === 1);
+                const cell = document.createElement('div');
+                cell.className = 'gantt-grid-cell';
+                if (isWeekend) cell.classList.add('weekend');
+                if (isFirstOfMonth) cell.classList.add('first-of-month');
+                cell.style.width = '50px';
+                cell.style.minWidth = '50px';
+                cell.style.height = '100%';
+                centroRow.appendChild(cell);
+            }
+            ganttGrid.appendChild(centroRow);
+            currentPosition += 54;
+
+            // Fila por cada maquinaria
+            centro.maquinarias.forEach(maquinaria => {
+                maquinariaPositions[maquinaria.id] = currentPosition + 15;
+                const row = document.createElement('div');
+                row.className = 'gantt-grid-row gantt-grid-maquinaria-row';
+                row.style.height = '60px';
+                row.style.minWidth = (totalDays * 50) + 'px';
+                row.style.width = (totalDays * 50) + 'px';
+                row.setAttribute('data-maquinaria-id', maquinaria.id);
+                row.setAttribute('data-centro-id', centro.id);
+                row.setAttribute('data-type', 'maquinaria');
+                // Renderizar celdas
+                for (let i = 0; i < totalDays; i++) {
+                    const currentDate = addDays(startDate, i);
+                    const dayOfWeek = getDayOfWeek(currentDate);
+                    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                    const isFirstOfMonth = (currentDate.getDate() === 1);
+                    const cell = document.createElement('div');
+                    cell.className = 'gantt-grid-cell';
+                    if (isWeekend) cell.classList.add('weekend');
+                    if (isFirstOfMonth) cell.classList.add('first-of-month');
+                    cell.style.width = '50px';
+                    cell.style.minWidth = '50px';
+                    cell.style.height = '100%';
+                    row.appendChild(cell);
+                }
+                ganttGrid.appendChild(row);
+                currentPosition += 60;
+            });
+        });
+        // Guardar posiciones para renderizar barras
+        ganttGrid.dataset.maquinariaPositions = JSON.stringify(maquinariaPositions);
+    }
+    // Sincronizar colapso/expansión del sidebar con la grilla
+    function syncCollapseWithGrid() {
+        document.querySelectorAll('.gantt-centro-header').forEach(header => {
+            header.addEventListener('click', function() {
+                const centroId = header.parentElement.getAttribute('data-centro-id');
+                const isCollapsed = document.getElementById('centro-maquinarias-' + centroId).classList.contains('collapsed');
+                // En la grilla, oculta o muestra las filas de maquinarias de ese centro
+                document.querySelectorAll('.gantt-grid-maquinaria-row[data-centro-id="' + centroId + '"]').forEach(row => {
+                    row.style.display = isCollapsed ? '' : 'none';
+                });
+            });
+        });
+    }
+
+    // Renderizar barras de tareas
+    function renderTaskBars() {
+        // Elimina barras previas
+        const prevBars = ganttTimeline.querySelectorAll('.gantt-task-bar');
+        prevBars.forEach(bar => bar.remove());
+        const maquinariaPositions = JSON.parse(ganttGrid.dataset.maquinariaPositions || '{}');
+        tasks.forEach(task => {
+            if (!task.finicio || !task.ftermino) return;
+            const taskStartDate = new Date(task.finicio);
+            const taskEndDate = new Date(task.ftermino);
+            let effectiveStart = taskStartDate;
+            let effectiveEnd = taskEndDate;
+            const startDateObj = new Date(startDate);
+            const endDateObj = new Date(endDate);
+            if (effectiveStart < startDateObj) effectiveStart = startDateObj;
+            if (effectiveEnd > endDateObj) effectiveEnd = endDateObj;
+            const taskStartDay = Math.floor((effectiveStart - startDateObj) / (1000*60*60*24));
+            const taskEndDay = Math.floor((effectiveEnd - startDateObj) / (1000*60*60*24));
+            let leftPosition = (taskStartDay) * 50;
+            let width = (taskEndDay - taskStartDay + 1) * 50;
+            if (width < 25) width = 25;
+            const rowHeight = 60;
+            const barHeight = 45;
+            let topPosition = 0;
+            if (task.maquinaria_id && maquinariaPositions[task.maquinaria_id]) {
+                topPosition = maquinariaPositions[task.maquinaria_id] + (rowHeight / 2) - (barHeight / 2);
+            }
+            let barColor = '#4a6cf7';
+            if (task.maquinaria && task.maquinaria.centro) {
+                switch(task.maquinaria.centro.descripcion) {
+                    case 'PRENSA': barColor = '#ff6b6b'; break;
+                    case 'REVESTIMIENTO': barColor = '#4ecdc4'; break;
+                    case 'POLIURETANO': barColor = '#45b7d1'; break;
+                    case 'TRAFILA': barColor = '#96ceb4'; break;
+                    case 'ANILLOS': barColor = '#feca57'; break;
+                }
+            }
+            const bar = document.createElement('div');
+            bar.className = 'gantt-task-bar';
+            bar.setAttribute('data-task-id', task.id);
+            bar.setAttribute('data-start-date', formatDate(taskStartDate));
+            bar.setAttribute('data-end-date', formatDate(taskEndDate));
+            bar.setAttribute('data-maquinaria-id', task.maquinaria_id || '');
+            bar.setAttribute('data-activo', task.activo);
+            bar.style.left = leftPosition + 'px';
+            bar.style.width = width + 'px';
+            bar.style.top = topPosition + 'px';
+            bar.style.backgroundColor = barColor;
+            bar.style.position = 'absolute';
+            bar.style.height = barHeight + 'px';
+            bar.title = `OP ${task.op}-${task.linea} | ${(task.maquinaria && task.maquinaria.nombre) ? task.maquinaria.nombre : 'Sin maquinaria'} | ${formatDate(taskStartDate).slice(5)} - ${formatDate(taskEndDate).slice(5)}`;
+            // Contenido
+            const content = document.createElement('div');
+            content.className = 'gantt-task-content';
+            const label = document.createElement('span');
+            label.className = 'gantt-task-label';
+            label.textContent = `OP ${task.op}-${task.linea}`;
+            content.appendChild(label);
+            bar.appendChild(content);
+            if (task.activo) {
+                const resizerLeft = document.createElement('div');
+                resizerLeft.className = 'gantt-task-resizer gantt-task-resizer-left';
+                bar.appendChild(resizerLeft);
+                const resizerRight = document.createElement('div');
+                resizerRight.className = 'gantt-task-resizer gantt-task-resizer-right';
+                bar.appendChild(resizerRight);
+            }
+            ganttTimeline.appendChild(bar);
+        });
+    }
+
+    // Sincronización de scroll vertical con bandera para evitar bucles
+    function syncScroll() {
+        let isSyncingSidebar = false;
+        let isSyncingTimeline = false;
+
+        sidebar.addEventListener('scroll', function() {
+            if (isSyncingSidebar) {
+                isSyncingSidebar = false;
+                return;
+            }
+            isSyncingTimeline = true;
+            ganttGrid.style.transform = `translateY(${-sidebar.scrollTop}px)`;
+            ganttTimeline.scrollTop = sidebar.scrollTop;
+        });
+
+        ganttTimeline.addEventListener('scroll', function() {
+            if (isSyncingTimeline) {
+                isSyncingTimeline = false;
+                return;
+            }
+            isSyncingSidebar = true;
+            sidebar.scrollTop = ganttTimeline.scrollTop;
+            ganttGrid.style.transform = `translateY(${-ganttTimeline.scrollTop}px)`;
+        });
+    }
+
+    // Inicializar
+    renderGrid();
+    renderTaskBars();
+    syncScroll();
+    syncCollapseWithGrid();
+
+    // Calcular y ajustar altura dinámica de grilla y sidebar
+    function setDynamicHeights() {
+        let totalHeight = 0;
+        centros.forEach(centro => {
+            totalHeight += 54; // header centro
+            totalHeight += centro.maquinarias.length * 60; // filas maquinarias
+        });
+        // Ajustar altura de la grilla
+        ganttGrid.style.height = totalHeight + 'px';
+        ganttGrid.style.minHeight = totalHeight + 'px';
+        // Ajustar altura del sidebar
+        sidebar.style.height = totalHeight + 'px';
+        sidebar.style.minHeight = totalHeight + 'px';
+    }
+    setDynamicHeights();
+});
+</script>
+                    
 
 <style>
-    /* Contenedor principal - Maximizado para 1920x1080 */
+    /* Contenedor principal - Adaptable con zoom y altura dinámica */
     .gantt-container {
         width: 100vw;
         max-width: none;
@@ -197,10 +374,17 @@
         border-radius: 0;
         box-shadow: none;
         padding: 0;
-        height: calc(100vh - 60px); /* Altura completa menos header */
+        height: auto; /* Altura dinámica en lugar de fija */
+        min-height: calc(100vh - 60px);
+        max-height: 100vh;
         display: flex;
         flex-direction: column;
-        /* Quitar overflow: hidden para permitir scroll interno */
+        position: relative;
+        overflow-y: auto; /* Permitir scroll vertical */
+        overflow-x: hidden;
+        /* Adaptación al zoom */
+        transform-origin: top left;
+        min-width: 100vw;
     }
 
     /* Forzar scroll horizontal en el contenedor de la grilla */
@@ -326,11 +510,46 @@
         top: 82px;
         z-index: 290;
         flex-shrink: 0;
+        flex-wrap: wrap;
+        gap: 15px;
     }
     
     .gantt-search-form {
         display: flex;
         align-items: center;
+    }
+    
+    /* Controles de drag */
+    .gantt-drag-controls {
+        display: flex;
+        align-items: center;
+        background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: 1px solid #dee2e6;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    }
+    
+    .drag-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 0.9rem;
+        color: #495057;
+    }
+    
+    .drag-info svg {
+        color: #6c757d;
+        flex-shrink: 0;
+    }
+    
+    .drag-mode {
+        padding: 2px 6px;
+        background: #fff;
+        border-radius: 4px;
+        border: 1px solid #e9ecef;
+        font-size: 0.85rem;
+        white-space: nowrap;
     }
     
     .search-container {
@@ -513,11 +732,10 @@
     }
     }
     
-    /* Contenedor del Gantt - Mejorado para scroll óptimo */
+    /* Contenedor del Gantt - Adaptable con zoom y scroll mejorado */
     .gantt-chart-container {
         width: 100%;
         flex: 1;
-        /* Quitar overflow: hidden para permitir scroll horizontal */
         border: 2px solid #e0e0e0;
         border-radius: 8px;
         background: #ffffff;
@@ -526,7 +744,53 @@
         display: flex;
         flex-direction: column;
         min-width: 0;
-        max-height: 80vh;
+        height: auto; /* Altura dinámica */
+        max-height: none; /* Sin restricción fija */
+        /* Zoom responsive */
+        transform-origin: top left;
+        /* Permitir scroll vertical dinámico */
+        overflow-y: auto;
+        overflow-x: hidden;
+    }
+    
+    /* Forzar scroll horizontal visible y funcional - mejorado para alturas dinámicas */
+    .gantt-scroll-x {
+        overflow-x: auto !important;
+        overflow-y: hidden;
+        width: 100%;
+        min-height: 400px;
+        height: auto; /* Altura dinámica */
+        position: relative;
+        background: #fff;
+        border-bottom: 1px solid #eee;
+        display: block;
+        /* Asegurar que el scroll sea siempre visible */
+        scrollbar-width: auto !important;
+        -ms-overflow-style: auto !important;
+        /* Permitir ajuste dinámico */
+        flex: 1;
+    }
+    
+    .gantt-scroll-x::-webkit-scrollbar {
+        height: 16px !important;
+        width: 16px !important;
+        display: block !important;
+        background: #f1f1f1 !important;
+    }
+    
+    .gantt-scroll-x::-webkit-scrollbar-track {
+        background: #f1f1f1 !important;
+        border-radius: 8px !important;
+    }
+    
+    .gantt-scroll-x::-webkit-scrollbar-thumb {
+        background: #4a6cf7 !important;
+        border-radius: 8px !important;
+        border: 2px solid #f1f1f1 !important;
+    }
+    
+    .gantt-scroll-x::-webkit-scrollbar-thumb:hover {
+        background: #3498db !important;
     }
     
     /* Cabecera de días - Mejorada para sticky completo */
@@ -648,18 +912,20 @@
         letter-spacing: 0.5px;
     }
     
-    /* Cuerpo del Gantt - Optimizado para scroll sincronizado independiente */
+    /* Cuerpo del Gantt - Optimizado para scroll sincronizado y altura dinámica */
     .gantt-body {
         display: flex;
         flex: 1;
         overflow: hidden; /* Sin scroll directo en el body */
         position: relative;
-        height: calc(80vh - 140px);
+        height: auto; /* Altura dinámica */
         min-height: 400px;
+        max-height: none; /* Sin restricción máxima */
         width: 100%;
+        /* Permitir que se ajuste al contenido y zoom */
     }
     
-    /* Sidebar con información de maquinarias */
+    /* Sidebar con información de maquinarias - altura dinámica */
     .gantt-sidebar {
         width: 300px;
         min-width: 300px;
@@ -671,21 +937,9 @@
         left: 0;
         z-index: 270;
         flex-shrink: 0;
-        height: 100%; /* Ocupar toda la altura del contenedor */
-        /* Altura dinámica para contenido */
-        @if(isset($centros))
-            @php
-                $totalSidebarHeight = 0;
-                foreach($centros as $centro) {
-                    $totalSidebarHeight += 54; // Header height
-                    $totalSidebarHeight += $centro->maquinarias->count() * 60; // Maquinarias height
-                }
-            @endphp
-            /* El contenido real del sidebar */
-            max-height: calc(80vh - 140px);
-        @else
-            max-height: calc(80vh - 140px);
-        @endif
+        height: auto; /* Altura dinámica */
+        max-height: none; /* Sin restricción fija */
+        /* Se ajustará automáticamente al contenido */
     }
     
     .gantt-centro-group {
@@ -737,14 +991,15 @@
     
     .gantt-centro-maquinarias {
         transition: max-height 0.3s ease, opacity 0.3s ease;
-        overflow: hidden;
+        overflow-y: auto;
         background: #ffffff;
-        max-height: 1000px; /* Altura máxima por defecto */
+        max-height: none;
     }
     
     .gantt-centro-maquinarias.collapsed {
-        max-height: 0;
+        max-height: 0 !important;
         opacity: 0;
+        overflow: hidden !important;
     }
     
     .gantt-centro-count {
@@ -812,29 +1067,17 @@
     /* Grid de fondo */
     .gantt-grid {
         position: absolute;
-        top: 17px; /* Ajuste: bajar la grilla unos pocos pixeles para alinear con las barras */
+        top: 17px;
         left: 0;
         width: 100%;
         z-index: 1;
-        min-width: calc({{ $totalDays }} * 50px);
-        width: max(100%, calc({{ $totalDays }} * 50px));
-        /* El grid debe poder moverse verticalmente con el scroll del sidebar */
-        transform: translateY(0px); /* Será controlado por JavaScript */
-        transition: transform 0.1s ease-out; /* Transición suave */
-        @if(isset($centros))
-            @php
-                $totalHeight = 0;
-                foreach($centros as $centro) {
-                    $totalHeight += 54; // Header height
-                    $totalHeight += $centro->maquinarias->count() * 60; // Maquinarias height
-                }
-            @endphp
-            height: {{ $totalHeight }}px;
-            min-height: {{ $totalHeight }}px;
-        @else
-            height: 400px;
-            min-height: 400px;
-        @endif
+        min-width: 100%;
+        width: 100%;
+        transform: translateY(0px);
+        transition: transform 0.1s ease-out;
+        /* La altura será ajustada dinámicamente por JS */
+        height: 400px;
+        min-height: 400px;
     }
     
     .gantt-grid-row {
@@ -895,7 +1138,7 @@
         opacity: 0.3;
     }
     
-    /* Barras de tareas - Aumentadas en tamaño */
+    /* Barras de tareas - Aumentadas en tamaño y habilitadas para drag horizontal */
     .gantt-task-bar {
         position: absolute;
         height: 45px;
@@ -914,6 +1157,11 @@
         margin-top: 0;
         /* Preparado para transformaciones de scroll */
         will-change: transform;
+        /* Habilitar drag horizontal - propiedades esenciales */
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
     }
     
     .gantt-task-bar:hover {
@@ -921,6 +1169,14 @@
         border-color: #ffffff;
         /* Mantener transformación durante hover */
         transform: translateY(-50%) translateY(-2px);
+    }
+    
+    .gantt-task-bar.dragging {
+        opacity: 0.8;
+        transform: translateY(-50%) scale(1.05);
+        z-index: 1000;
+        box-shadow: 0 8px 25px rgba(0,0,0,0.35);
+        cursor: grabbing;
     }
     
     .gantt-task-bar[data-activo="0"] {
@@ -1460,17 +1716,7 @@
     
     /* Asegurar que el contenido del gantt-body tenga la altura correcta para scroll */
     .gantt-body {
-        @if(isset($centros))
-            @php
-                $totalContentHeight = 0;
-                foreach($centros as $centro) {
-                    $totalContentHeight += 54; // Header height
-                    $totalContentHeight += $centro->maquinarias->count() * 60; // Maquinarias height
-                }
-            @endphp
-            /* Si el contenido es más alto que el contenedor, mostrar scroll */
-            max-height: calc(100vh - 200px);
-        @endif
+        /* La altura será ajustada dinámicamente por JS si es necesario */
     }
 </style>
 
@@ -1502,7 +1748,79 @@ document.addEventListener('DOMContentLoaded', function() {
         // Actualizar posiciones de las barras de tareas después de colapsar/expandir
         setTimeout(() => {
             updateTaskPositions();
+            // También ajustar alturas dinámicas
+            adjustDynamicHeights();
         }, 300);
+    }
+    
+    // Función para calcular y ajustar alturas dinámicamente según contenido y zoom
+    function adjustDynamicHeights() {
+        const ganttContainer = document.querySelector('.gantt-container');
+        const ganttBody = document.querySelector('.gantt-body');
+        const ganttSidebar = document.querySelector('.gantt-sidebar');
+        const ganttChartContainer = document.querySelector('.gantt-chart-container');
+        const ganttTimeline = document.getElementById('ganttTimeline');
+        
+        if (!ganttContainer || !ganttBody || !ganttSidebar || !ganttChartContainer) return;
+        
+        // Obtener el factor de zoom actual
+        const zoomLevel = window.devicePixelRatio || 1;
+        const computedZoom = parseFloat(getComputedStyle(document.documentElement).zoom || 1);
+        const totalZoom = zoomLevel * computedZoom;
+        
+        // Calcular altura real del contenido del sidebar
+        let contentHeight = 0;
+        const centroGroups = ganttSidebar.querySelectorAll('.gantt-centro-group');
+        centroGroups.forEach(group => {
+            const header = group.querySelector('.gantt-centro-header');
+            const maquinarias = group.querySelector('.gantt-centro-maquinarias');
+            
+            if (header) contentHeight += header.offsetHeight;
+            
+            if (maquinarias && !maquinarias.classList.contains('collapsed')) {
+                const rows = maquinarias.querySelectorAll('.gantt-maquinaria-row');
+                rows.forEach(row => {
+                    contentHeight += row.offsetHeight;
+                });
+            }
+        });
+        
+        // Ajustar por zoom - cuando hay zoom, necesitamos más espacio vertical
+        const zoomAdjustment = Math.max(1, 1 / totalZoom);
+        const adjustedContentHeight = contentHeight * zoomAdjustment;
+        
+        // Calcular altura disponible del viewport
+        const viewportHeight = window.innerHeight;
+        const headerHeight = document.querySelector('.gantt-header')?.offsetHeight || 0;
+        const searchHeight = document.querySelector('.gantt-search-section')?.offsetHeight || 0;
+        const daysHeaderHeight = document.querySelector('.gantt-days-header')?.offsetHeight || 0;
+        
+        const availableHeight = viewportHeight - headerHeight - searchHeight - daysHeaderHeight - 40; // 40px margin
+        const maxHeight = Math.max(400, Math.min(availableHeight, adjustedContentHeight + 100));
+        
+        // Aplicar alturas dinámicas
+        ganttBody.style.height = maxHeight + 'px';
+        ganttSidebar.style.height = maxHeight + 'px';
+        ganttSidebar.style.maxHeight = maxHeight + 'px';
+        
+        if (ganttTimeline) {
+            ganttTimeline.style.height = maxHeight + 'px';
+            ganttTimeline.style.maxHeight = maxHeight + 'px';
+        }
+        
+        // Ajustar el contenedor principal
+        ganttChartContainer.style.height = maxHeight + 'px';
+        ganttChartContainer.style.maxHeight = maxHeight + 'px';
+        
+        console.log('Dynamic height adjustment:', {
+            zoomLevel,
+            computedZoom,
+            totalZoom,
+            contentHeight,
+            adjustedContentHeight,
+            maxHeight,
+            viewportHeight
+        });
     }
     
     // Función para actualizar las posiciones de las barras de tareas
@@ -1544,11 +1862,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 taskBar.style.display = 'none';
             }
         });
+        
         // Ajuste visual: subir el sidebar para alinear con la grilla
         const sidebar = document.querySelector('.gantt-sidebar');
         if (sidebar) {
             sidebar.style.marginTop = sidebarOffset + 'px';
         }
+        
+        // Actualizar alturas dinámicamente después de cambios
+        adjustDynamicHeights();
+        
         console.log('Posiciones de tareas actualizadas, altura total:', accumulatedTop);
     }
     
@@ -1881,6 +2204,10 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         taskBar.addEventListener('mousedown', function(e) {
+            if (taskBar.getAttribute('data-activo') === "0") {
+                return;
+            }
+            
             if (taskBar.querySelector('.gantt-confirm-action')) return;
             draggingTask = null;
             resizing = null;
@@ -1896,8 +2223,19 @@ document.addEventListener('DOMContentLoaded', function() {
                 initialLeft = parseFloat(this.style.left);
                 initialWidth = parseFloat(this.style.width);
             } else {
-                // Iniciar arrastre solo horizontal
+                // Determinar tipo de drag: Shift = solo horizontal, Alt = solo vertical, normal = ambos
+                const horizontalOnly = e.shiftKey;
+                const verticalOnly = e.altKey;
+                
+                // Configurar tipo de drag
+                this.setAttribute('data-drag-mode', horizontalOnly ? 'horizontal' : (verticalOnly ? 'vertical' : 'both'));
+                
+                // Añadir clase de drag
+                this.classList.add('dragging');
+                
+                // Iniciar arrastre
                 draggingTask = this;
+                
                 // Forzar left y width a porcentaje si no lo están
                 if (!this.style.left || this.style.left.indexOf('%') === -1) {
                     let leftPx = this.offsetLeft;
@@ -1911,8 +2249,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     let widthPct = (widthPx / parentW) * 100;
                     this.style.width = widthPct + '%';
                 }
+                
                 // Guardar maquinaria original
                 draggingTask.setAttribute('data-original-maquinaria-id', draggingTask.getAttribute('data-maquinaria-id'));
+                
                 // Guardar el ancho original de la barra al iniciar el drag
                 let barWidth = parseFloat(this.style.width);
                 if (isNaN(barWidth) || barWidth <= 0) {
@@ -1923,21 +2263,26 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
                 draggingTask.setAttribute('data-original-width', barWidth);
+                
                 // Calcular el offset del mouse dentro de la barra (en % del contenedor)
                 let parentW = this.parentElement ? this.parentElement.offsetWidth : 1;
                 let mouseOffsetPx = e.clientX - this.getBoundingClientRect().left;
                 let mouseOffsetPct = (mouseOffsetPx / parentW) * 100;
                 draggingTask.setAttribute('data-mouse-offset', mouseOffsetPct);
+                
                 initialX = e.clientX;
                 initialLeft = parseFloat(this.style.left);
-                // Guardar el top original en px
+                
+                // Guardar el top original
                 draggingTask.setAttribute('data-original-top-px', this.style.top);
-                // Calcular offset vertical entre el mouse y el centro visual de la barra (por transform: translateY(-50%))
+                
+                // Guardar posición Y inicial para modo horizontal
+                draggingTask.setAttribute('data-original-mouse-y', e.clientY);
+                
+                // Calcular offset vertical entre el mouse y el centro visual de la barra
                 let barRect = this.getBoundingClientRect();
                 const rowHeight = 60; // GRID_ROW_HEIGHT
                 const barHeight = barRect.height;
-                // El centro de la barra debe coincidir con el mouse, así que offsetY = e.clientY - (barRect.top + barRect.height / 2)
-                // Si hay desfase, restar la diferencia completa (no la mitad)
                 let offsetY = e.clientY - (barRect.top + barHeight / 2);
                 if (rowHeight > barHeight) {
                     offsetY -= (rowHeight - barHeight);
@@ -1959,69 +2304,95 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         if (draggingTask) {
-            // Hacer que la barra siga el mouse exactamente donde se hizo clic
-            const timelineWidth = ganttTimeline.clientWidth;
-            let barWidth = parseFloat(draggingTask.getAttribute('data-original-width'));
-            if (isNaN(barWidth) || barWidth <= 0) {
-                barWidth = 10;
-            }
-            // Offset del mouse dentro de la barra (en % del contenedor)
-            let mouseOffsetPct = parseFloat(draggingTask.getAttribute('data-mouse-offset'));
-            if (isNaN(mouseOffsetPct)) mouseOffsetPct = 0;
-            // Calcular el left para que el mouse quede donde se agarró la barra
-            let parentW = draggingTask.parentElement ? draggingTask.parentElement.offsetWidth : timelineWidth;
-            let mouseX = e.clientX - draggingTask.parentElement.getBoundingClientRect().left;
-            let newLeft = (mouseX - (mouseOffsetPct / 100) * parentW) / parentW * 100;
-            newLeft = Math.max(0, Math.min(100 - barWidth, newLeft));
-
-            // Detectar la fila (maquinaria) bajo el mouse usando getBoundingClientRect para precisión absoluta
-            let targetRow = null;
-            let targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
-            const rows = Array.from(document.querySelectorAll('.gantt-grid-row'));
-            for (let row of rows) {
-                const rect = row.getBoundingClientRect();
-                if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                    targetRow = row;
-                    targetMaquinariaId = row.getAttribute('data-maquinaria-id');
-                    break;
+            const dragMode = draggingTask.getAttribute('data-drag-mode') || 'both';
+            
+            // Calcular nueva posición horizontal
+            let newLeft = null;
+            if (dragMode === 'horizontal' || dragMode === 'both') {
+                const timelineWidth = ganttTimeline.clientWidth;
+                let barWidth = parseFloat(draggingTask.getAttribute('data-original-width'));
+                if (isNaN(barWidth) || barWidth <= 0) {
+                    barWidth = 10;
                 }
+                
+                // Offset del mouse dentro de la barra (en % del contenedor)
+                let mouseOffsetPct = parseFloat(draggingTask.getAttribute('data-mouse-offset'));
+                if (isNaN(mouseOffsetPct)) mouseOffsetPct = 0;
+                
+                // Calcular el left para que el mouse quede donde se agarró la barra
+                let parentW = draggingTask.parentElement ? draggingTask.parentElement.offsetWidth : timelineWidth;
+                let mouseX = e.clientX - draggingTask.parentElement.getBoundingClientRect().left;
+                newLeft = (mouseX - (mouseOffsetPct / 100) * parentW) / parentW * 100;
+                newLeft = Math.max(0, Math.min(100 - barWidth, newLeft));
+                
+                // Aplicar nueva posición horizontal
+                draggingTask.style.left = newLeft + '%';
+                
+                // Actualizar fechas solo en modo horizontal o both
+                updateTaskDates(draggingTask, barWidth);
             }
-            // Calcular el centro visual exacto de la fila
-            let newTop = null;
-            if (targetRow) {
-                const rowRect = targetRow.getBoundingClientRect();
-                const gridRect = targetRow.parentElement.getBoundingClientRect();
-                // Centro de la fila relativo al contenedor de la grilla
-                const rowCenter = (rowRect.top + rowRect.bottom) / 2 - gridRect.top;
-                // Centrar la barra en la fila
-                const barHeight = draggingTask.offsetHeight;
-                newTop = rowCenter;
-                draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
-                draggingTask.style.backgroundColor = '#ff9800';
-                draggingTask.style.opacity = '0.8';
-            } else {
-                // Si no está sobre ninguna fila, mantener la original
-                targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
-                draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
-                draggingTask.style.backgroundColor = '';
-                draggingTask.style.opacity = '1';
-                if (typeof maquinariaPositions !== 'undefined' && maquinariaPositions[targetMaquinariaId] !== undefined) {
-                    newTop = maquinariaPositions[targetMaquinariaId] + 30; // fallback
+            
+            // Calcular nueva posición vertical
+            if (dragMode === 'vertical' || dragMode === 'both') {
+                // Detectar la fila (maquinaria) bajo el mouse
+                let targetRow = null;
+                let targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
+                const rows = Array.from(document.querySelectorAll('.gantt-grid-row'));
+                
+                for (let row of rows) {
+                    const rect = row.getBoundingClientRect();
+                    if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
+                        targetRow = row;
+                        targetMaquinariaId = row.getAttribute('data-maquinaria-id');
+                        break;
+                    }
+                }
+                
+                // Calcular nueva posición vertical
+                let newTop = null;
+                if (targetRow) {
+                    const rowRect = targetRow.getBoundingClientRect();
+                    const gridRect = targetRow.parentElement.getBoundingClientRect();
+                    // Centro de la fila relativo al contenedor de la grilla
+                    const rowCenter = (rowRect.top + rowRect.bottom) / 2 - gridRect.top;
+                    newTop = rowCenter;
+                    
+                    // Cambio visual para indicar nueva fila
+                    draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
+                    draggingTask.style.backgroundColor = '#ff9800';
+                    draggingTask.style.opacity = '0.8';
                 } else {
-                    // Restaurar top original en px si no hay posición
+                    // Mantener fila original
+                    targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
+                    draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
+                    draggingTask.style.backgroundColor = '';
+                    draggingTask.style.opacity = '1';
+                    
+                    // Restaurar posición original
                     let origTop = draggingTask.getAttribute('data-original-top-px');
                     if (origTop !== null && origTop !== undefined) {
                         newTop = parseFloat(origTop);
                     }
                 }
+                
+                if (newTop !== null) {
+                    draggingTask.style.top = newTop + 'px';
+                    draggingTask.style.transform = 'translateY(-50%)';
+                }
             }
-            if (newTop !== null) {
-                draggingTask.style.top = newTop + 'px';
-                draggingTask.style.transform = 'translateY(-50%)';
+            
+            // En modo solo horizontal, mantener la fila original
+            if (dragMode === 'horizontal') {
+                let origTop = draggingTask.getAttribute('data-original-top-px');
+                if (origTop !== null && origTop !== undefined) {
+                    draggingTask.style.top = origTop;
+                    draggingTask.style.transform = 'translateY(-50%)';
+                }
+                
+                // Restaurar color y opacidad originales
+                draggingTask.style.backgroundColor = '';
+                draggingTask.style.opacity = '1';
             }
-            draggingTask.style.left = newLeft + '%';
-            // No modificar el ancho aquí
-            updateTaskDates(draggingTask, barWidth);
         } else if (resizing) {
             // Solo modificar el ancho, no la posición horizontal salvo que sea resize izquierdo
             const dx = e.clientX - initialX;
@@ -2054,53 +2425,93 @@ document.addEventListener('DOMContentLoaded', function() {
     
     document.addEventListener('mouseup', function(e) {
         if (draggingTask) {
-            // Detectar la fila real bajo el mouse al soltar, solo contando filas de maquinaria reales
-            let targetRow = null;
-            let targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
-            // Solo filas de maquinaria visibles
-            const rows = Array.from(document.querySelectorAll('.gantt-maquinaria-row')).filter(row => row.offsetParent !== null);
-            const mouseY = e.clientY;
-            let debugRows = [];
-            for (let row of rows) {
-                const rect = row.getBoundingClientRect();
-                debugRows.push({id: row.getAttribute('data-maquinaria-id'), top: rect.top, bottom: rect.bottom});
-                if (mouseY >= rect.top && mouseY <= rect.bottom) {
-                    targetRow = row;
-                    targetMaquinariaId = row.getAttribute('data-maquinaria-id');
-                    break;
+            const dragMode = draggingTask.getAttribute('data-drag-mode') || 'both';
+            
+            // Solo procesar cambio de fila si no es modo horizontal puro
+            if (dragMode !== 'horizontal') {
+                // Detectar la fila real bajo el mouse al soltar, solo contando filas de maquinaria reales
+                let targetRow = null;
+                let targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
+                // Solo filas de maquinaria visibles
+                const rows = Array.from(document.querySelectorAll('.gantt-maquinaria-row')).filter(row => row.offsetParent !== null);
+                const mouseY = e.clientY;
+                
+                for (let row of rows) {
+                    const rect = row.getBoundingClientRect();
+                    if (mouseY >= rect.top && mouseY <= rect.bottom) {
+                        targetRow = row;
+                        targetMaquinariaId = row.getAttribute('data-maquinaria-id');
+                        break;
+                    }
+                }
+                
+                // Asignar la maquinaria y centrar la barra en la fila
+                if (targetRow && typeof window.maquinariaPositions !== 'undefined' && window.maquinariaPositions[targetMaquinariaId] !== undefined) {
+                    draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
+                    // Centrar perfectamente la barra en la fila
+                    const rowHeight = targetRow.offsetHeight || 60;
+                    const barHeight = draggingTask.offsetHeight;
+                    const offset = (rowHeight - barHeight) / 2;
+                    draggingTask.style.top = (window.maquinariaPositions[targetMaquinariaId] + offset) + 'px';
+                    draggingTask.style.transform = '';
+                } else {
+                    // Restaurar maquinaria original si no hay destino válido
+                    const originalMaquinaria = draggingTask.getAttribute('data-original-maquinaria-id');
+                    draggingTask.setAttribute('data-maquinaria-id', originalMaquinaria);
+                    
+                    // Restaurar posición vertical original
+                    let origTop = draggingTask.getAttribute('data-original-top-px');
+                    if (origTop !== null && origTop !== undefined) {
+                        draggingTask.style.top = origTop;
+                        draggingTask.style.transform = 'translateY(-50%)';
+                    }
+                }
+            } else {
+                // En modo horizontal, mantener maquinaria original
+                const originalMaquinaria = draggingTask.getAttribute('data-original-maquinaria-id');
+                draggingTask.setAttribute('data-maquinaria-id', originalMaquinaria);
+                
+                // Restaurar posición vertical original
+                let origTop = draggingTask.getAttribute('data-original-top-px');
+                if (origTop !== null && origTop !== undefined) {
+                    draggingTask.style.top = origTop;
+                    draggingTask.style.transform = 'translateY(-50%)';
                 }
             }
-            console.log('DEBUG filas maquinaria visibles:', debugRows);
-            console.log('DEBUG mouseY:', mouseY);
-            console.log('Fila detectada mouseup:', targetMaquinariaId, targetRow);
-            // Asignar la maquinaria y centrar la barra en la fila (corrigiendo desfase vertical)
-            if (targetRow && typeof window.maquinariaPositions !== 'undefined' && window.maquinariaPositions[targetMaquinariaId] !== undefined) {
-                draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
-                // Centrar perfectamente la barra en la fila
-                const rowHeight = targetRow.offsetHeight || 60;
-                const barHeight = draggingTask.offsetHeight;
-                const offset = (rowHeight - barHeight) / 2;
-                draggingTask.style.top = (window.maquinariaPositions[targetMaquinariaId] + offset) + 'px';
-                draggingTask.style.transform = '';
-            }
+            
+            // Limpiar estilos de drag
             draggingTask.style.opacity = '1';
             draggingTask.style.backgroundColor = '';
+            draggingTask.classList.remove('dragging');
+            
             // Restaurar el ancho original al terminar el drag
             let barWidth = parseFloat(draggingTask.getAttribute('data-original-width'));
             if (!isNaN(barWidth) && barWidth > 0) {
                 draggingTask.style.width = barWidth + '%';
             }
+            
+            // Actualizar fechas y guardar en BD
             updateTaskDates(draggingTask, barWidth);
             updateTaskDatesInDB(draggingTask);
-            // Limpiar el atributo temporal
+            
+            // Limpiar atributos temporales
             draggingTask.removeAttribute('data-original-width');
+            draggingTask.removeAttribute('data-drag-mode');
+            draggingTask.removeAttribute('data-mouse-offset');
+            draggingTask.removeAttribute('data-original-top-px');
+            draggingTask.removeAttribute('data-original-mouse-y');
+            draggingTask.removeAttribute('data-mouse-offset-y');
+            draggingTask.removeAttribute('data-original-maquinaria-id');
+            
             draggingTask = null;
         }
+        
         if (resizing) {
             updateTaskDates(resizing.task);
             updateTaskDatesInDB(resizing.task);
             resizing = null;
         }
+        
         draggedToNewMaquinaria = false;
     });
     
@@ -2411,6 +2822,50 @@ document.addEventListener('DOMContentLoaded', function() {
             showNotification('Error al guardar comentario', true);
         });
     }
+    
+    // Event listeners para ajuste dinámico de alturas
+    window.addEventListener('resize', function() {
+        console.log('Window resized, adjusting heights...');
+        setTimeout(adjustDynamicHeights, 100);
+    });
+    
+    // Detectar cambios de zoom del navegador
+    window.addEventListener('load', function() {
+        adjustDynamicHeights();
+    });
+    
+    // Detectar zoom con media queries (funciona en la mayoría de navegadores)
+    const zoomMediaQuery = window.matchMedia('(min-resolution: 1dppx)');
+    zoomMediaQuery.addEventListener('change', function() {
+        console.log('Zoom changed, adjusting heights...');
+        setTimeout(adjustDynamicHeights, 150);
+    });
+    
+    // Observar cambios en el DOM que puedan afectar el layout
+    const observer = new MutationObserver(function(mutations) {
+        let shouldUpdate = false;
+        mutations.forEach(function(mutation) {
+            if (mutation.type === 'childList' || 
+                (mutation.type === 'attributes' && 
+                 (mutation.attributeName === 'class' || mutation.attributeName === 'style'))) {
+                shouldUpdate = true;
+            }
+        });
+        if (shouldUpdate) {
+            setTimeout(adjustDynamicHeights, 50);
+        }
+    });
+    
+    observer.observe(document.querySelector('.gantt-sidebar'), {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['class', 'style']
+    });
+    
+    // Ajuste inicial
+    setTimeout(adjustDynamicHeights, 500);
 });
 </script>
+
 @endsection
