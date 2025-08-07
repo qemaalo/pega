@@ -90,7 +90,7 @@ class GanttController extends Controller
         ->get();
         
         // Crear string descriptivo del semestre
-        $semesterString = $semester == 1 ? 'Primer Semestre' : 'Segundo Semestre';
+        $semesterString = $semester == 1 ? '1° Semestre' : '2° Semestre';
         $dateString = $semesterString . ' ' . $year;
         
         // Retornar vista con datos del semestre

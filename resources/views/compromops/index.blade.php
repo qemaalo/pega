@@ -1,135 +1,133 @@
-<!-- filepath: c:\wamp64\www\example-app2\resources\views\gantt\index.blade.php -->
-
 @extends('layouts.app')
 
 @section('content')
 <div class="gantt-container">
     <div class="gantt-header">
-        <h1 class="gantt-title">Carta Gantt de Tareas</h1>
-    </div>
-    
-    <div class="gantt-search-section">
-        <form action="{{ route('compromops.index') }}" method="GET" class="gantt-search-form">
-            <div class="search-container">
-                <input type="text" name="search_op" placeholder="Buscar por OP..." class="gantt-search-input" value="{{ request()->search_op ?? '' }}">
-                <button type="submit" class="gantt-search-btn">Buscar</button>
-            </div>
-        </form>
-        
-        <!-- Controles de drag mejorados -->
-        <div class="gantt-drag-controls">
-            <span class="drag-info">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="12" r="10"/>
-                    <path d="M12 8v8"/>
-                    <path d="M8 12h8"/>
-                </svg>
-                <strong>Arrastrar actividades:</strong>
-                <span class="drag-mode">Normal: Libre</span> | 
-                <span class="drag-mode">Shift + Drag: Solo horizontal</span> | 
-                <span class="drag-mode">Alt + Drag: Solo vertical</span>
-            </span>
+        <div class="gantt-header-left">
+            <h1 class="gantt-title">Carta Gantt de Tareas</h1>
         </div>
         
-        <!-- Nueva navegación de semestres -->
-        <div class="gantt-month-navigation">
-            <button id="prevSemester" class="gantt-nav-btn gantt-nav-btn-prev">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M15 18l-6-6 6-6"></path>
-                </svg>
-                <span>Semestre Anterior</span>
-            </button>
-            
-            <div class="gantt-month-display">
-                <span id="currentSemesterDisplay" class="gantt-current-month">{{ $dateString }}</span>
-                <small style="opacity: 0.9; font-size: 0.9rem;">{{ $startDate->format('d/m/Y') }} - {{ $endDate->format('d/m/Y') }}</small>
-            </div>
-            
-            <button id="nextSemester" class="gantt-nav-btn gantt-nav-btn-next">
-                <span>Semestre Siguiente</span>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M9 18l6-6-6-6"></path>
-                </svg>
-            </button>
-            
-            <button id="currentSemesterBtn" class="gantt-nav-btn-today">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                    <line x1="16" y1="2" x2="16" y2="6"/>
-                    <line x1="8" y1="2" x2="8" y2="6"/>
-                    <line x1="3" y1="10" x2="21" y2="10"/>
-                </svg>
-                Semestre Actual
-            </button>
-        </div>
-    </div>
-    
-    <div class="gantt-chart-container" style="display: flex; width: 100%; height: 100%;">
-        <!-- Sidebar fija a la izquierda con header sticky -->
-        <div style="display: flex; flex-direction: column; min-width: 300px; max-width: 300px; height: 100%;">
-            <div class="gantt-sidebar-header" style="position: sticky; top: 0; z-index: 2; background: #fff;">Maquinarias</div>
-            <div class="gantt-sidebar" style="flex: 1 1 auto; overflow-y: auto; min-width: 300px; max-width: 300px; background: #fff;">
-                @if(isset($centros) && $centros->count() > 0)
-                    @foreach($centros as $centro)
-                        <div class="gantt-centro-group" data-centro-id="{{ $centro->id }}">
-                            <div class="gantt-centro-header" onclick="toggleCentroGroup({{ $centro->id }})">
-                                <div class="gantt-centro-info">
-                                    <span class="gantt-centro-toggle">▼</span>
-                                    <h4>{{ $centro->descripcion }}</h4>
-                                </div>
-                                <span class="gantt-centro-count">({{ $centro->maquinarias->count() }})</span>
-                            </div>
-                            <div class="gantt-centro-maquinarias" id="centro-maquinarias-{{ $centro->id }}">
-                                @foreach($centro->maquinarias as $maquinaria)
-                                    <div class="gantt-maquinaria-row" data-maquinaria-id="{{ $maquinaria->id }}">
-                                        <div class="gantt-maquinaria-name">{{ $maquinaria->nombre }}</div>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
-                    @endforeach
-                @else
-                    <div class="gantt-empty-sidebar">
-                        Sin maquinarias configuradas
-                    </div>
-                @endif
-            </div>
-        </div>
-        <!-- Grid y timeline scrollable a la derecha -->
-        <div class="gantt-scroll-x" style="overflow-x: auto; width: calc(100% - 300px); height: 100%;">
-            <div style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px;">
-                <div class="gantt-timeline-header" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; display: flex; overflow-x: hidden !important;">
-                    @for ($i = 0; $i < $totalDays; $i++)
-                        @php
-                            $currentDate = $startDate->copy()->addDays($i);
-                            $dayOfWeek = $currentDate->dayOfWeek;
-                            $isWeekend = ($dayOfWeek == 0 || $dayOfWeek == 6);
-                            $isFirstOfMonth = $currentDate->day == 1;
-                        @endphp
-                        <div class="gantt-day-column {{ $isWeekend ? 'weekend' : '' }} {{ $isFirstOfMonth ? 'first-of-month' : '' }}" style="width: 50px; min-width: 50px;">
-                            <div class="gantt-day-number">{{ $currentDate->day }}</div>
-                            <div class="gantt-day-name">
-                                @if($isFirstOfMonth)
-                                    {{ $currentDate->format('M') }}
-                                @else
-                                    {{ $currentDate->format('D') }}
-                                @endif
-                            </div>
-                        </div>
-                    @endfor
+        <div class="gantt-header-center">
+            <div class="gantt-month-navigation">
+                <button id="prevSemester" class="gantt-nav-btn gantt-nav-btn-prev">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M15 18l-6-6 6-6"></path>
+                    </svg>
+                    <span>Ant</span>
+                </button>
+                
+                <div class="gantt-month-display">
+                    <span id="currentSemesterDisplay" class="gantt-current-month">{{ $dateString }}</span>
                 </div>
-                <div class="gantt-body" id="ganttBody" style="display: flex;">
-                    <div class="gantt-timeline" id="ganttTimeline" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; overflow-x: hidden !important;">
-                        <div class="gantt-scroll-content" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; position: relative; height: auto; overflow-x: hidden !important;">
-                            <div class="gantt-grid" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; position: relative; overflow-x: hidden !important;">
-                                <!-- La grilla será renderizada dinámicamente por JavaScript -->
-                            </div>
-                            <!-- Barras de tareas -->
-                            <!-- Las barras de tareas serán renderizadas dinámicamente por JavaScript -->
+                
+                <button id="nextSemester" class="gantt-nav-btn gantt-nav-btn-next">
+                    <span>Sig</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M9 18l6-6-6-6"></path>
+                    </svg>
+                </button>
+                
+                <button id="currentSemesterBtn" class="gantt-nav-btn-today">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                        <line x1="16" y1="2" x2="16" y2="6"/>
+                        <line x1="8" y1="2" x2="8" y2="6"/>
+                        <line x1="3" y1="10" x2="21" y2="10"/>
+                    </svg>
+                    Hoy
+                </button>
+            </div>
+        </div>
+        
+        <div class="gantt-header-right">
+            <form action="{{ route('compromops.index') }}" method="GET" class="gantt-search-form">
+                <div class="search-container">
+                    <input type="text" name="search_op" placeholder="Buscar por OP..." class="gantt-search-input" value="{{ request()->search_op ?? '' }}">
+                    <button type="submit" class="gantt-search-btn">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="11" cy="11" r="8"/>
+                            <path d="21 21l-4.35-4.35"/>
+                        </svg>
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    
+    <div class="gantt-chart-container">
+        <!-- Headers row - ambos headers a la misma altura -->
+        <div class="gantt-headers-row" style="display: flex; position: sticky; top: 0; z-index: 300;">
+            <!-- Header del sidebar -->
+            <div class="gantt-sidebar-header">Maquinarias</div>
+            <!-- Header del timeline -->
+            <div class="gantt-timeline-header" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; display: flex;">
+                @for ($i = 0; $i < $totalDays; $i++)
+                    @php
+                        $currentDate = $startDate->copy()->addDays($i);
+                        $dayOfWeek = $currentDate->dayOfWeek;
+                        $isWeekend = ($dayOfWeek == 0 || $dayOfWeek == 6);
+                        $isFirstOfMonth = $currentDate->day == 1;
+                    @endphp
+                    <div class="gantt-day-column {{ $isWeekend ? 'weekend' : '' }} {{ $isFirstOfMonth ? 'first-of-month' : '' }}" style="width: 50px; min-width: 50px;">
+                        <div class="gantt-day-number">{{ $currentDate->day }}</div>
+                        <div class="gantt-day-name">
+                            @if($isFirstOfMonth)
+                                {{ $currentDate->format('M') }}
+                            @else
+                                {{ $currentDate->format('D') }}
+                            @endif
                         </div>
-                        <!-- Área para crear nuevas tareas -->
-                        <!--<div id="newTaskArea" class="gantt-new-task-area"></div>-->
-<!-- Exportar datos como JSON para JS -->
+                    </div>
+                @endfor
+            </div>
+        </div>
+        
+        <!-- Body row con sidebar estático y grilla con scroll -->
+        <div class="gantt-body" style="display: flex; flex: 1;">
+            <!-- Sidebar estático -->
+            <div class="gantt-sidebar" id="ganttSidebar">
+                <div class="gantt-sidebar-content">
+                    @if(isset($centros) && $centros->count() > 0)
+                        @foreach($centros as $centro)
+                            <div class="gantt-centro-group" data-centro-id="{{ $centro->id }}">
+                                <div class="gantt-centro-header" onclick="toggleCentroGroup({{ $centro->id }})">
+                                    <div class="gantt-centro-info">
+                                        <span class="gantt-centro-toggle">▼</span>
+                                        <h4>{{ $centro->descripcion }}</h4>
+                                    </div>
+                                    <span class="gantt-centro-count">({{ $centro->maquinarias->count() }})</span>
+                                </div>
+                                <div class="gantt-centro-maquinarias" id="centro-maquinarias-{{ $centro->id }}">
+                                    @foreach($centro->maquinarias as $maquinaria)
+                                        <div class="gantt-maquinaria-row" data-maquinaria-id="{{ $maquinaria->id }}">
+                                            <div class="gantt-maquinaria-name">{{ $maquinaria->nombre }}</div>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        @endforeach
+                    @else
+                        <div class="gantt-empty-sidebar">
+                            Sin maquinarias configuradas
+                        </div>
+                    @endif
+                </div>
+            </div>
+            
+            <!-- Timeline con scroll -->
+            <div class="gantt-timeline-container" id="ganttTimelineContainer" style="flex: 1;">
+                <div class="gantt-timeline" id="ganttTimeline" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; overflow: hidden;">
+                    <!-- Grilla directamente sin contenedor adicional -->
+                    <div class="gantt-grid" style="min-width: {{ $totalDays * 50 }}px; width: {{ $totalDays * 50 }}px; position: relative; overflow: hidden;">
+                        <!-- La grilla será renderizada dinámicamente por JavaScript -->
+                    </div>
+                    <!-- Barras de tareas -->
+                    <!-- Las barras de tareas serán renderizadas dinámicamente por JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
 <script>
     window.ganttData = {
         centros: @json($centros),
@@ -145,10 +143,62 @@
 document.addEventListener('DOMContentLoaded', function() {
     
     const ganttGrid = document.querySelector('.gantt-grid');
-    const ganttBody = document.getElementById('ganttBody');
+    const ganttBody = document.querySelector('.gantt-body');
+    const ganttTimelineContainer = document.getElementById('ganttTimelineContainer');
     const ganttTimeline = document.getElementById('ganttTimeline');
-    const sidebar = document.querySelector('.gantt-sidebar');
+    const sidebar = document.getElementById('ganttSidebar');
     const { centros, tasks, startDate, endDate, totalDays } = window.ganttData;
+
+    // FUNCIÓN GLOBAL: Configurar eventos de barras de tareas  
+    window.setupTaskBarEvents = function(taskBar) {
+        // Verificar si la tarea está inactiva
+        if (taskBar.getAttribute('data-activo') === "0") {
+            return;
+        }
+
+        // Agregar eventos básicos de arrastre
+        taskBar.addEventListener('mousedown', function(e) {
+            if (taskBar.getAttribute('data-activo') === "0") {
+                return;
+            }
+            
+            console.log('Iniciando arrastre de barra:', taskBar.getAttribute('data-task-id'));
+            taskBar.classList.add('dragging');
+            
+            // Prevenir selección de texto
+            e.preventDefault();
+            
+            // Configurar arrastre básico (se puede expandir más tarde)
+            document.addEventListener('mouseup', function handler() {
+                taskBar.classList.remove('dragging');
+                console.log('Arrastre terminado');
+                document.removeEventListener('mouseup', handler);
+            });
+        });
+
+        // Eventos para redimensionadores si existen
+        const resizers = taskBar.querySelectorAll('.gantt-task-resizer');
+        resizers.forEach(resizer => {
+            resizer.addEventListener('mousedown', function(e) {
+                e.stopPropagation(); // Evitar que se active el arrastre de la barra
+                console.log('Iniciando redimensionado');
+            });
+        });
+    };
+
+    // DEBUGGING: Verificar datos completos
+    console.log('=== VERIFICACIÓN DE DATOS COMPLETOS ===');
+    console.log('Total centros:', centros.length);
+    let totalMaquinarias = 0;
+    centros.forEach((centro, index) => {
+        console.log(`Centro ${index + 1}: ${centro.descripcion} - ${centro.maquinarias.length} maquinarias`);
+        centro.maquinarias.forEach((maq, maqIndex) => {
+            totalMaquinarias++;
+            console.log(`  ${totalMaquinarias}. ${maq.nombre} (ID: ${maq.id})`);
+        });
+    });
+    console.log('Total maquinarias:', totalMaquinarias);
+    console.log('=== FIN VERIFICACIÓN ===');
 
     // Utilidades de fecha
     function addDays(dateStr, days) {
@@ -163,20 +213,50 @@ document.addEventListener('DOMContentLoaded', function() {
         return date.getDay();
     }
 
-    // Renderizar grilla
+    // Renderizar grilla con alineación perfecta
     function renderGrid() {
+        // Verificar que el sidebar esté cargado
+        const sidebarElement = document.getElementById('ganttSidebar');
+        if (!sidebarElement) {
+            console.error('Sidebar no encontrado, reintentando en 100ms...');
+            setTimeout(renderGrid, 100);
+            return;
+        }
+        
         ganttGrid.innerHTML = '';
         let maquinariaPositions = {};
-        let currentPosition = 0;
-        centros.forEach(centro => {
-            // Fila header del centro
+        let currentPosition = 0; // Comenzar desde 0 para alineación perfecta
+        
+        // ALTURA UNIFORME para TODOS los elementos (headers + maquinarias)
+        const UNIFORM_HEIGHT = 60; // Todos los elementos tendrán 60px
+        
+        let rowIndex = 0;
+        
+        console.log('=== INICIANDO RENDERIZADO DE GRILLA ===');
+        
+        // CRÍTICO: Renderizar filas para CADA elemento visible del sidebar
+        document.querySelectorAll('#ganttSidebar .gantt-centro-group').forEach(centroGroup => {
+            const centroId = centroGroup.getAttribute('data-centro-id');
+            const centro = ganttData.centros.find(c => c.id == centroId);
+            
+            if (!centro) {
+                console.warn('Centro no encontrado:', centroId);
+                return;
+            }
+            
+            // 1. FILA HEADER DEL CENTRO (SIEMPRE visible)
+            console.log(`Renderizando header centro: ${centro.descripcion}`);
             const centroRow = document.createElement('div');
             centroRow.className = 'gantt-grid-row gantt-grid-centro-header';
-            centroRow.style.height = '54px';
+            centroRow.style.height = UNIFORM_HEIGHT + 'px';
+            centroRow.style.minHeight = UNIFORM_HEIGHT + 'px';
+            centroRow.style.maxHeight = UNIFORM_HEIGHT + 'px';
             centroRow.style.minWidth = (totalDays * 50) + 'px';
             centroRow.style.width = (totalDays * 50) + 'px';
             centroRow.setAttribute('data-centro-id', centro.id);
             centroRow.setAttribute('data-type', 'centro');
+            centroRow.setAttribute('data-row-index', rowIndex);
+            
             // Renderizar celdas para header
             for (let i = 0; i < totalDays; i++) {
                 const currentDate = addDays(startDate, i);
@@ -193,53 +273,88 @@ document.addEventListener('DOMContentLoaded', function() {
                 centroRow.appendChild(cell);
             }
             ganttGrid.appendChild(centroRow);
-            currentPosition += 54;
+            currentPosition += UNIFORM_HEIGHT;
+            rowIndex++;
 
-            // Fila por cada maquinaria
-            centro.maquinarias.forEach(maquinaria => {
-                maquinariaPositions[maquinaria.id] = currentPosition + 15;
-                const row = document.createElement('div');
-                row.className = 'gantt-grid-row gantt-grid-maquinaria-row';
-                row.style.height = '60px';
-                row.style.minWidth = (totalDays * 50) + 'px';
-                row.style.width = (totalDays * 50) + 'px';
-                row.setAttribute('data-maquinaria-id', maquinaria.id);
-                row.setAttribute('data-centro-id', centro.id);
-                row.setAttribute('data-type', 'maquinaria');
-                // Renderizar celdas
-                for (let i = 0; i < totalDays; i++) {
-                    const currentDate = addDays(startDate, i);
-                    const dayOfWeek = getDayOfWeek(currentDate);
-                    const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
-                    const isFirstOfMonth = (currentDate.getDate() === 1);
-                    const cell = document.createElement('div');
-                    cell.className = 'gantt-grid-cell';
-                    if (isWeekend) cell.classList.add('weekend');
-                    if (isFirstOfMonth) cell.classList.add('first-of-month');
-                    cell.style.width = '50px';
-                    cell.style.minWidth = '50px';
-                    cell.style.height = '100%';
-                    row.appendChild(cell);
-                }
-                ganttGrid.appendChild(row);
-                currentPosition += 60;
-            });
+            // 2. FILAS DE MAQUINARIAS - Renderizar TODAS las maquinarias visibles
+            const maquinariasContainer = centroGroup.querySelector('.gantt-centro-maquinarias');
+            const isCollapsed = maquinariasContainer ? maquinariasContainer.classList.contains('collapsed') : false;
+            
+            console.log(`Centro ${centro.descripcion} - Colapsado: ${isCollapsed}`);
+            
+            if (!isCollapsed && centro.maquinarias && centro.maquinarias.length > 0) {
+                // Renderizar TODAS las maquinarias del centro (no solo las visibles del sidebar)
+                centro.maquinarias.forEach((maquinaria, maqIndex) => {
+                    console.log(`  Renderizando maquinaria ${maqIndex + 1}/${centro.maquinarias.length}: ${maquinaria.nombre}`);
+                    
+                    // Calcular posición exacta para las barras de tareas - usar currentPosition actual
+                    maquinariaPositions[maquinaria.id] = currentPosition;
+                    
+                    const row = document.createElement('div');
+                    row.className = 'gantt-grid-row gantt-grid-maquinaria-row';
+                    row.style.height = UNIFORM_HEIGHT + 'px';
+                    row.style.minHeight = UNIFORM_HEIGHT + 'px';
+                    row.style.maxHeight = UNIFORM_HEIGHT + 'px';
+                    row.style.minWidth = (totalDays * 50) + 'px';
+                    row.style.width = (totalDays * 50) + 'px';
+                    row.setAttribute('data-maquinaria-id', maquinaria.id);
+                    row.setAttribute('data-centro-id', centro.id);
+                    row.setAttribute('data-type', 'maquinaria');
+                    row.setAttribute('data-row-index', rowIndex);
+                    
+                    // Renderizar celdas
+                    for (let i = 0; i < totalDays; i++) {
+                        const currentDate = addDays(startDate, i);
+                        const dayOfWeek = getDayOfWeek(currentDate);
+                        const isWeekend = (dayOfWeek === 0 || dayOfWeek === 6);
+                        const isFirstOfMonth = (currentDate.getDate() === 1);
+                        const cell = document.createElement('div');
+                        cell.className = 'gantt-grid-cell';
+                        if (isWeekend) cell.classList.add('weekend');
+                        if (isFirstOfMonth) cell.classList.add('first-of-month');
+                        cell.style.width = '50px';
+                        cell.style.minWidth = '50px';
+                        cell.style.height = '100%';
+                        row.appendChild(cell);
+                    }
+                    ganttGrid.appendChild(row);
+                    currentPosition += UNIFORM_HEIGHT;
+                    rowIndex++;
+                });
+            }
         });
+        
+        // Aplicar altura total exacta a la grilla + buffer de seguridad
+        const finalHeight = currentPosition + 10; // 10px buffer para asegurar visibilidad completa
+        ganttGrid.style.height = finalHeight + 'px';
+        ganttGrid.style.minHeight = finalHeight + 'px';
+        
+        // Asegurar que el timeline tenga la altura adecuada
+        ganttTimeline.style.height = finalHeight + 'px';
+        ganttTimeline.style.minHeight = finalHeight + 'px';
+        
         // Guardar posiciones para renderizar barras
         ganttGrid.dataset.maquinariaPositions = JSON.stringify(maquinariaPositions);
+        
+        console.log('=== RENDERIZADO COMPLETADO ===');
+        console.log('Filas renderizadas:', rowIndex);
+        console.log('Maquinarias con posiciones:', Object.keys(maquinariaPositions).length);
+        console.log('Altura final:', finalHeight + 'px');
+        console.log('Posiciones guardadas:', maquinariaPositions);
     }
+    
     // Sincronizar colapso/expansión del sidebar con la grilla
     function syncCollapseWithGrid() {
-        document.querySelectorAll('.gantt-centro-header').forEach(header => {
-            header.addEventListener('click', function() {
-                const centroId = header.parentElement.getAttribute('data-centro-id');
-                const isCollapsed = document.getElementById('centro-maquinarias-' + centroId).classList.contains('collapsed');
-                // En la grilla, oculta o muestra las filas de maquinarias de ese centro
-                document.querySelectorAll('.gantt-grid-maquinaria-row[data-centro-id="' + centroId + '"]').forEach(row => {
-                    row.style.display = isCollapsed ? '' : 'none';
-                });
-            });
-        });
+        // Esta función ahora se encarga de re-renderizar la grilla cada vez que cambia el estado
+        // Ya no necesitamos manipular filas individuales, sino re-renderizar todo
+        console.log('Sincronizando grilla con sidebar...');
+        renderGrid(); // Re-renderizar toda la grilla
+        renderTaskBars(); // Re-renderizar las barras de tareas
+        
+        // Verificar alineación después de sincronizar
+        setTimeout(() => {
+            ensurePerfectAlignment();
+        }, 50);
     }
 
     // Renderizar barras de tareas
@@ -263,11 +378,12 @@ document.addEventListener('DOMContentLoaded', function() {
             let leftPosition = (taskStartDay) * 50;
             let width = (taskEndDay - taskStartDay + 1) * 50;
             if (width < 25) width = 25;
-            const rowHeight = 60;
+            const rowHeight = 60; // UNIFORM_HEIGHT
             const barHeight = 45;
             let topPosition = 0;
             if (task.maquinaria_id && maquinariaPositions[task.maquinaria_id]) {
-                topPosition = maquinariaPositions[task.maquinaria_id] + (rowHeight / 2) - (barHeight / 2);
+                // Centrar la barra en la fila de la maquinaria
+                topPosition = maquinariaPositions[task.maquinaria_id] + (rowHeight - barHeight) / 2;
             }
             let barColor = '#4a6cf7';
             if (task.maquinaria && task.maquinaria.centro) {
@@ -311,61 +427,260 @@ document.addEventListener('DOMContentLoaded', function() {
             }
             ganttTimeline.appendChild(bar);
         });
+        
+        // CRÍTICO: Configurar eventos de interactividad para las barras recién creadas
+        console.log('Configurando eventos de interactividad para barras...');
+        document.querySelectorAll('.gantt-task-bar').forEach(bar => {
+            if (window.setupTaskBarEvents) {
+                window.setupTaskBarEvents(bar);
+            }
+        });
+        console.log('Eventos de barras configurados');
     }
 
-    // Sincronización de scroll vertical con bandera para evitar bucles
+    // FUNCIÓN PARA VERIFICAR ALINEACIÓN PERFECTA
+    function ensurePerfectAlignment() {
+        console.log('🎯 Verificando alineación perfecta...');
+        
+        const EXPECTED_HEIGHT = 60;
+        let alignmentIssues = 0;
+        
+        // Verificar elementos del sidebar
+        document.querySelectorAll('.gantt-centro-header, .gantt-maquinaria-row').forEach((el, index) => {
+            const height = el.offsetHeight;
+            if (height !== EXPECTED_HEIGHT) {
+                console.warn(`❌ Sidebar elemento ${index}: altura ${height}px (esperaba ${EXPECTED_HEIGHT}px)`);
+                el.style.height = EXPECTED_HEIGHT + 'px';
+                el.style.minHeight = EXPECTED_HEIGHT + 'px';
+                el.style.maxHeight = EXPECTED_HEIGHT + 'px';
+                alignmentIssues++;
+            }
+        });
+        
+        // Verificar elementos de la grilla
+        document.querySelectorAll('.gantt-grid-centro-header, .gantt-grid-maquinaria-row').forEach((el, index) => {
+            const height = el.offsetHeight;
+            if (height !== EXPECTED_HEIGHT) {
+                console.warn(`❌ Grid elemento ${index}: altura ${height}px (esperaba ${EXPECTED_HEIGHT}px)`);
+                el.style.height = EXPECTED_HEIGHT + 'px';
+                el.style.minHeight = EXPECTED_HEIGHT + 'px';
+                el.style.maxHeight = EXPECTED_HEIGHT + 'px';
+                alignmentIssues++;
+            }
+        });
+        
+        if (alignmentIssues === 0) {
+            console.log('✅ Alineación perfecta confirmada - todos los elementos tienen 60px');
+        } else {
+            console.log(`⚠️  Corregidos ${alignmentIssues} problemas de alineación`);
+        }
+    }
+
+    // SISTEMA UNIFICADO DE SCROLL SINCRONIZADO
     function syncScroll() {
-        let isSyncingSidebar = false;
-        let isSyncingTimeline = false;
-
-        sidebar.addEventListener('scroll', function() {
-            if (isSyncingSidebar) {
-                isSyncingSidebar = false;
-                return;
-            }
-            isSyncingTimeline = true;
-            ganttGrid.style.transform = `translateY(${-sidebar.scrollTop}px)`;
-            ganttTimeline.scrollTop = sidebar.scrollTop;
+        console.log('Configurando sistema de scroll sincronizado...');
+        
+        // Verificar que los elementos existan
+        const sidebarContent = sidebar.querySelector('.gantt-sidebar-content');
+        const timelineHeader = document.querySelector('.gantt-timeline-header');
+        
+        console.log('Elementos para scroll:', {
+            ganttTimelineContainer: !!ganttTimelineContainer,
+            sidebar: !!sidebar,
+            sidebarContent: !!sidebarContent,
+            timelineHeader: !!timelineHeader
         });
-
-        ganttTimeline.addEventListener('scroll', function() {
-            if (isSyncingTimeline) {
-                isSyncingTimeline = false;
-                return;
+        
+        if (!ganttTimelineContainer || !sidebar || !sidebarContent) {
+            console.error('❌ No se pudieron encontrar elementos necesarios para el scroll');
+            return;
+        }
+        
+        // SCROLL VERTICAL: Sincronizar sidebar con timeline
+        ganttTimelineContainer.addEventListener('scroll', function() {
+            const scrollTop = ganttTimelineContainer.scrollTop;
+            const scrollLeft = ganttTimelineContainer.scrollLeft;
+            
+            // Sincronizar contenido del sidebar verticalmente
+            if (sidebarContent) {
+                sidebarContent.style.transform = `translateY(${-scrollTop}px)`;
             }
-            isSyncingSidebar = true;
-            sidebar.scrollTop = ganttTimeline.scrollTop;
-            ganttGrid.style.transform = `translateY(${-ganttTimeline.scrollTop}px)`;
+            
+            // SCROLL HORIZONTAL: Sincronizar header del timeline
+            if (timelineHeader) {
+                timelineHeader.style.transform = `translateX(${-scrollLeft}px)`;
+            }
+            
+            // Debug ocasional
+            if (Math.random() < 0.01) { // 1% de las veces
+                console.log('Scroll sincronizado - Top:', scrollTop, 'Left:', scrollLeft);
+            }
+        });
+        
+        // SCROLL HORIZONTAL ADICIONAL: Si alguien hace scroll en el header, sincronizar con el timeline
+        if (timelineHeader) {
+            timelineHeader.addEventListener('scroll', function() {
+                if (Math.abs(ganttTimelineContainer.scrollLeft - this.scrollLeft) > 1) {
+                    ganttTimelineContainer.scrollLeft = this.scrollLeft;
+                }
+            });
+        }
+        
+        console.log('✅ Sistema de scroll sincronizado configurado correctamente');
+        window.ganttScrollConfigured = true; // Marcar como configurado
+    }
+
+    // Verificar y corregir alineación después del renderizado
+    function verifyAlignment() {
+        const sidebarGroups = sidebar.querySelectorAll('.gantt-centro-group');
+        const gridRows = ganttGrid.querySelectorAll('.gantt-grid-row');
+        
+        console.log('Verificando alineación:');
+        console.log('Grupos en sidebar:', sidebarGroups.length);
+        console.log('Filas en grilla:', gridRows.length);
+        
+        // Verificar que cada grupo del sidebar tenga su fila correspondiente en la grilla
+        let sidebarRowIndex = 0;
+        sidebarGroups.forEach((group, groupIndex) => {
+            const centroHeader = group.querySelector('.gantt-centro-header');
+            const maquinarias = group.querySelectorAll('.gantt-maquinaria-row');
+            
+            console.log(`Grupo ${groupIndex}: 1 header + ${maquinarias.length} maquinarias`);
+            
+            // Verificar header del centro
+            if (gridRows[sidebarRowIndex]) {
+                console.log(`Fila grilla ${sidebarRowIndex}: ${gridRows[sidebarRowIndex].getAttribute('data-type')}`);
+            }
+            sidebarRowIndex++;
+            
+            // Verificar maquinarias
+            maquinarias.forEach((maq, maqIndex) => {
+                if (gridRows[sidebarRowIndex]) {
+                    console.log(`Fila grilla ${sidebarRowIndex}: ${gridRows[sidebarRowIndex].getAttribute('data-type')} (maq-id: ${gridRows[sidebarRowIndex].getAttribute('data-maquinaria-id')})`);
+                }
+                sidebarRowIndex++;
+            });
         });
     }
 
-    // Inicializar
-    renderGrid();
-    renderTaskBars();
-    syncScroll();
-    syncCollapseWithGrid();
+    // Funciones de utilidad inicializadas - las llamadas principales están al final del script
+    
+    // Verificar alineación después del renderizado
+    setTimeout(() => {
+        verifyAlignment();
+    }, 100);
 
-    // Calcular y ajustar altura dinámica de grilla y sidebar
+    // Calcular y ajustar altura dinámica de grilla y sidebar para mantener sincronización
     function setDynamicHeights() {
         let totalHeight = 0;
         centros.forEach(centro => {
-            totalHeight += 54; // header centro
+            totalHeight += 60; // header centro - CORREGIDO a 60px
             totalHeight += centro.maquinarias.length * 60; // filas maquinarias
         });
+        
+        // Agregar buffer de seguridad para asegurar visibilidad completa
+        totalHeight += 10;
+        
         // Ajustar altura de la grilla
         ganttGrid.style.height = totalHeight + 'px';
         ganttGrid.style.minHeight = totalHeight + 'px';
-        // Ajustar altura del sidebar
-        sidebar.style.height = totalHeight + 'px';
-        sidebar.style.minHeight = totalHeight + 'px';
+        
+        // Ajustar altura del contenido del sidebar para que coincida con la grilla
+        const sidebarContent = sidebar.querySelector('.gantt-sidebar-content');
+        if (sidebarContent) {
+            sidebarContent.style.height = totalHeight + 'px';
+            sidebarContent.style.minHeight = totalHeight + 'px';
+        }
+        
+        // CORRECCIÓN: Altura ajustada para funcionar con scroll sincronizado
+        ganttTimelineContainer.style.height = 'calc(100vh - 180px)'; /* Coordinado con CSS */
+        ganttTimelineContainer.style.maxHeight = 'calc(100vh - 180px)';
+        ganttTimelineContainer.style.overflowY = 'auto'; // Permitir scroll vertical
+        
+        // Asegurar que el timeline tenga la altura completa para scroll
+        ganttTimeline.style.height = totalHeight + 'px';
+        ganttTimeline.style.minHeight = totalHeight + 'px';
+        
+        console.log('Altura total configurada:', totalHeight + 'px');
     }
+    
+    // INICIALIZACIÓN PRINCIPAL
+    console.log('=== INICIANDO SISTEMA GANTT ===');
+    renderGrid();
+    renderTaskBars();
     setDynamicHeights();
+    
+    // VERIFICAR ALINEACIÓN PERFECTA
+    setTimeout(() => {
+        ensurePerfectAlignment(); // Verificar que todos los elementos estén alineados
+    }, 50);
+    
+    // CONFIGURAR SCROLL DESPUÉS DE QUE TODO ESTÉ RENDERIZADO
+    setTimeout(() => {
+        syncScroll(); // CRÍTICO: Configurar el sistema de scroll sincronizado
+        console.log('✅ Scroll sincronizado configurado');
+    }, 100);
+    
+    // CONFIGURAR EVENTOS DE BARRAS DESPUÉS DE LA INICIALIZACIÓN
+    setTimeout(() => {
+        console.log('Configuración final de eventos...');
+        document.querySelectorAll('.gantt-task-bar').forEach(bar => {
+            if (window.setupTaskBarEvents) {
+                window.setupTaskBarEvents(bar);
+            }
+        });
+        console.log('✅ Sistema de Gantt completamente inicializado');
+    }, 500);
 });
 </script>
                     
-
 <style>
-    /* Contenedor principal - Adaptable con zoom y altura dinámica */
+    /* Eliminar todos los scrolls excepto los de la grilla */
+    html, body {
+        overflow: hidden !important;
+        height: 100vh;
+        max-height: 100vh;
+    }
+    
+    /* Eliminar scrollbars de todos los elementos por defecto */
+    * {
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+    }
+    
+    *::-webkit-scrollbar {
+        display: none;
+    }
+    
+    /* Solo permitir scrollbars en el timeline container */
+    .gantt-timeline-container {
+        scrollbar-width: auto !important;
+        -ms-overflow-style: auto !important;
+    }
+    
+    .gantt-timeline-container::-webkit-scrollbar {
+        display: block !important;
+        height: 16px;
+        width: 16px;
+        background: #f1f1f1;
+    }
+    
+    .gantt-timeline-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 8px;
+    }
+    
+    .gantt-timeline-container::-webkit-scrollbar-thumb {
+        background: #4a6cf7;
+        border-radius: 8px;
+        border: 2px solid #f1f1f1;
+    }
+    
+    .gantt-timeline-container::-webkit-scrollbar-thumb:hover {
+        background: #3498db;
+    }
+    
+    /* Contenedor principal - optimizado para mejor aprovechamiento del espacio */
     .gantt-container {
         width: 100vw;
         max-width: none;
@@ -374,101 +689,82 @@ document.addEventListener('DOMContentLoaded', function() {
         border-radius: 0;
         box-shadow: none;
         padding: 0;
-        height: auto; /* Altura dinámica en lugar de fija */
-        min-height: calc(100vh - 60px);
+        height: 100vh;
+        min-height: 100vh;
         max-height: 100vh;
         display: flex;
         flex-direction: column;
-        position: relative;
-        overflow-y: auto; /* Permitir scroll vertical */
-        overflow-x: hidden;
-        /* Adaptación al zoom */
+        position: fixed; /* Fixed para asegurar que use toda la pantalla */
+        top: 0;
+        left: 0;
+        overflow: hidden;
         transform-origin: top left;
         min-width: 100vw;
+        z-index: 1000; /* Por encima de todo */
     }
 
-    /* Forzar scroll horizontal en el contenedor de la grilla */
-    .gantt-scroll-x {
-        overflow-x: auto;
-        width: 100%;
-        min-height: 400px;
-        height: auto;
-        position: relative;
-        background: #fff;
-        border-bottom: 1px solid #eee;
-        display: block;
-    }
-    .gantt-scroll-content {
-        min-width: 100%;
-        width: {{ $totalDays * 50 }}px;
-        position: relative;
-        min-height: 400px;
-        height: auto;
-        display: block;
-        overflow: hidden !important;
-        -ms-overflow-style: none !important;
-        scrollbar-width: none !important;
-        overscroll-behavior: none !important;
-    }
-    .gantt-scroll-content::-webkit-scrollbar {
-        width: 0 !important;
-        height: 0 !important;
-        display: none !important;
-        background: transparent !important;
-    }
-    .gantt-grid {
-        min-width: {{ $totalDays * 50 }}px;
-        width: {{ $totalDays * 50 }}px;
-        position: relative;
-        height: auto;
-        display: block;
-        overflow-x: hidden !important;
-        overflow: -moz-scrollbars-none;
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-    .gantt-grid::-webkit-scrollbar {
-        display: none !important;
-    }
-    
-    /* Encabezado */
+    /* Encabezado - nuevo layout con tres secciones */
     .gantt-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 0;
-        padding: 10px 20px;
-        border-bottom: 2px solid #e0e0e0;
+        padding: 8px 25px; /* Reducido de 12px a 8px */
+        border-bottom: 1px solid #dee2e6; /* Más sutil */
         background: #f8f9fa;
         position: sticky;
         top: 0;
         z-index: 300;
         flex-shrink: 0;
+        min-height: 50px; /* Altura mínima controlada */
+        max-height: 50px; /* Altura máxima controlada */
+    }
+    
+    .gantt-header-left {
+        flex: 0 0 auto;
+        min-width: 200px;
+    }
+    
+    .gantt-header-center {
+        flex: 1;
+        display: flex;
+        justify-content: center;
+        max-width: 600px;
+    }
+    
+    .gantt-header-right {
+        flex: 0 0 auto;
+        min-width: 280px;
+        display: flex;
+        justify-content: flex-end;
     }
     
     .gantt-title {
-        font-size: 2.8rem;
+        font-size: 1.6rem; /* Reducido de 2.2rem */
         color: #2c3e50;
         margin: 0;
-        font-weight: 700;
-        letter-spacing: -0.8px;
-        text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+        font-weight: 600; /* Reducido de 700 */
+        letter-spacing: -0.3px;
     }
     
-    .gantt-btn {
+    /* === BOTONES OPTIMIZADOS === */
+    .gantt-btn, .gantt-btn-secondary {
         display: inline-flex;
         align-items: center;
-        background: #3a3a3a;
-        color: #fff;
-        padding: 10px 20px; /* Aumentado */
+        padding: 10px 20px;
         border-radius: 6px;
         text-decoration: none;
-        font-size: 1rem; /* Aumentado */
+        font-size: 1rem;
         font-weight: 500;
         letter-spacing: 0.3px;
         transition: all 0.2s ease;
         border: none;
         cursor: pointer;
+    }
+    
+    .gantt-btn {
+        background: #3a3a3a;
+        color: #fff;
     }
     
     .gantt-btn:hover {
@@ -478,32 +774,21 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     .gantt-btn-secondary {
-        display: inline-flex;
-        align-items: center;
         background: #f5f5f5;
         color: #555;
-        padding: 10px 20px; /* Aumentado */
-        border-radius: 6px;
-        text-decoration: none;
-        font-size: 1rem; /* Aumentado */
-        font-weight: 500;
-        letter-spacing: 0.3px;
-        transition: all 0.2s ease;
-        border: none;
-        cursor: pointer;
     }
     
     .gantt-btn-secondary:hover {
         background: #e8e8e8;
     }
     
-    /* Sección de búsqueda */
+    /* Sección de búsqueda - reducida para mejor aprovechamiento del espacio */
     .gantt-search-section {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 0;
-        padding: 15px 20px;
+        padding: 12px 20px;
         background: #fff;
         border-bottom: 2px solid #e0e0e0;
         position: sticky;
@@ -512,11 +797,71 @@ document.addEventListener('DOMContentLoaded', function() {
         flex-shrink: 0;
         flex-wrap: wrap;
         gap: 15px;
+        overflow: hidden;
     }
     
     .gantt-search-form {
         display: flex;
         align-items: center;
+    }
+    
+    .search-container {
+        display: flex;
+        align-items: center;
+        border-radius: 16px; /* Más alargado */
+        overflow: hidden;
+        border: 1px solid #dee2e6;
+        background: #fff;
+        transition: all 0.2s ease;
+        height: 32px; /* Altura fija y compacta */
+        box-sizing: border-box;
+    }
+    
+    .search-container:focus-within {
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+    }
+    
+    .gantt-search-input {
+        border: none;
+        outline: none;
+        padding: 6px 10px; /* Más compacto */
+        font-size: 0.8rem; /* Más pequeño */
+        background: transparent;
+        color: #495057;
+        width: 160px; /* Más estrecho */
+        font-weight: 400;
+        height: 100%;
+        box-sizing: border-box;
+    }
+    
+    .gantt-search-input::placeholder {
+        color: #9ca3af;
+        font-style: normal;
+        font-size: 0.75rem;
+    }
+    
+    .gantt-search-btn {
+        background: #6c757d;
+        color: white;
+        border: none;
+        padding: 6px 8px; /* Más compacto */
+        cursor: pointer;
+        transition: all 0.2s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-width: 28px;
+    }
+    
+    .gantt-search-btn:hover {
+        background: #5a6268;
+    }
+    
+    .gantt-search-btn svg {
+        width: 14px;
+        height: 14px;
     }
     
     /* Controles de drag */
@@ -582,89 +927,58 @@ document.addEventListener('DOMContentLoaded', function() {
         outline: none;
     }
     
-    .gantt-search-input::placeholder {
-        color: #7f8c8d;
-        font-weight: 400;
-    }
-    
-    .gantt-search-btn {
-        padding: 15px 20px;
-        background: #3498db;
-        border: none;
-        color: white;
-        font-size: 1.2rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        font-weight: 600;
-    }
-    
-    .gantt-search-btn:hover {
-        background: #2980b9;
-        transform: scale(1.05);
-    }
-    
-    /* Navegación del mes - Optimizada para pantallas grandes */
+    /* Navegación del mes - En header */
     .gantt-month-navigation {
         display: flex;
-        justify-content: space-between;
         align-items: center;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        border-radius: 15px;
-        padding: 20px 25px;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
-        border: 2px solid #ffffff;
-        margin-left: auto;
-        width: 100%;
-        max-width: 800px;
+        gap: 4px; /* Reducido de 8px */
+        background: #ffffff;
+        padding: 4px 12px; /* Reducido de 8px 16px */
+        border-radius: 20px; /* Más alargado */
+        border: 1px solid #e0e0e0;
+        height: 32px; /* Altura fija y compacta */
+        box-sizing: border-box;
     }
 
     .gantt-nav-btn {
         display: flex;
         align-items: center;
-        gap: 10px;
-        padding: 15px 25px;
-        border: none;
-        border-radius: 12px;
-        background: rgba(255, 255, 255, 0.2);
+        gap: 3px; /* Reducido */
+        background: #6c757d;
         color: white;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        backdrop-filter: blur(10px);
-    }
-
-    .gantt-nav-btn:hover {
-        background: rgba(255, 255, 255, 0.3);
-        transform: translateY(-2px);
-        box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-    
-        font-size: 1rem; /* Aumentado */
+        border: none;
+        padding: 4px 8px; /* Muy compacto */
+        border-radius: 12px; /* Más alargado */
+        font-size: 0.75rem; /* Más pequeño */
         font-weight: 500;
         cursor: pointer;
         transition: all 0.2s ease;
+        height: 24px; /* Altura fija */
+        box-sizing: border-box;
+        min-width: 60px; /* Ancho mínimo para mantener proporción alargada */
+    }
+
+    .gantt-nav-btn:hover {
+        background: #5a6268;
+        transform: none; /* Sin efectos de movimiento */
     }
 
     /* Botón mes anterior */
     .gantt-nav-btn-prev {
-        background: #ff9800;
-        color: white;
+        background: #dc3545;
     }
 
     .gantt-nav-btn-prev:hover {
-        background: #e68a00;
-        transform: translateX(-2px);
+        background: #c82333;
     }
 
     /* Botón mes siguiente */
     .gantt-nav-btn-next {
-        background: #4caf50;
-        color: white;
+        background: #28a745;
     }
 
     .gantt-nav-btn-next:hover {
-        background: #3d8b40;
-        transform: translateX(2px);
+        background: #218838;
     }
 
     /* Visualización del mes actual */
@@ -672,13 +986,46 @@ document.addEventListener('DOMContentLoaded', function() {
         display: flex;
         flex-direction: column;
         align-items: center;
-        gap: 10px;
-        padding: 15px 25px;
-        position: relative;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        margin: 0 8px; /* Reducido de 12px */
+        min-width: 140px; /* Reducido de 180px */
+        text-align: center;
+        height: 24px; /* Altura fija */
+        justify-content: center;
+    }
+
+    .gantt-current-month {
+        font-weight: 600;
+        font-size: 0.85rem; /* Reducido de 1.1rem */
+        color: #2c3e50;
+        margin: 0;
+        line-height: 1;
+    }
+    
+    .gantt-date-range {
+        display: none; /* Ocultamos las fechas para ganar espacio */
+    }
+
+    .gantt-nav-btn-today {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+        background: #17a2b8;
         color: white;
-        border-radius: 12px;
-        box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        border: none;
+        padding: 4px 8px; /* Compacto */
+        border-radius: 12px; /* Más alargado */
+        font-size: 0.75rem; /* Más pequeño */
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        height: 24px; /* Altura fija */
+        box-sizing: border-box;
+        min-width: 50px; /* Ancho mínimo */
+    }
+    
+    .gantt-nav-btn-today:hover {
+        background: #138496;
+        transform: none; /* Sin efectos de movimiento */
     }
 
     .gantt-month-display:before {
@@ -699,10 +1046,6 @@ document.addEventListener('DOMContentLoaded', function() {
         text-align: center;
         text-shadow: 0 2px 4px rgba(0,0,0,0.3);
         letter-spacing: 0.5px;
-        font-weight: 600;
-        color: #333;
-        font-size: 1.3rem; /* Aumentado */
-        text-align: center;
     }
     
     /* Botón mes actual/hoy */
@@ -730,9 +1073,10 @@ document.addEventListener('DOMContentLoaded', function() {
         transform: translateY(-2px);
         box-shadow: 0 5px 15px rgba(255, 255, 255, 0.3);
     }
-    }
     
-    /* Contenedor del Gantt - Adaptable con zoom y scroll mejorado */
+    /* === CONTENEDOR Y HEADERS OPTIMIZADOS === */
+    
+    /* Contenedor del Gantt - usar máxima altura disponible */
     .gantt-chart-container {
         width: 100%;
         flex: 1;
@@ -740,95 +1084,53 @@ document.addEventListener('DOMContentLoaded', function() {
         border-radius: 8px;
         background: #ffffff;
         position: relative;
-        margin: 0 10px;
+        margin: 0 10px 10px 10px;
         display: flex;
         flex-direction: column;
         min-width: 0;
-        height: auto; /* Altura dinámica */
-        max-height: none; /* Sin restricción fija */
-        /* Zoom responsive */
+        height: calc(100vh - 120px); /* Altura ajustada para el header del Gantt */
+        max-height: calc(100vh - 120px);
         transform-origin: top left;
-        /* Permitir scroll vertical dinámico */
-        overflow-y: auto;
-        overflow-x: hidden;
+        overflow: hidden;
     }
     
-    /* Forzar scroll horizontal visible y funcional - mejorado para alturas dinámicas */
-    .gantt-scroll-x {
-        overflow-x: auto !important;
-        overflow-y: hidden;
-        width: 100%;
-        min-height: 400px;
-        height: auto; /* Altura dinámica */
-        position: relative;
-        background: #fff;
-        border-bottom: 1px solid #eee;
-        display: block;
-        /* Asegurar que el scroll sea siempre visible */
-        scrollbar-width: auto !important;
-        -ms-overflow-style: auto !important;
-        /* Permitir ajuste dinámico */
-        flex: 1;
-    }
-    
-    .gantt-scroll-x::-webkit-scrollbar {
-        height: 16px !important;
-        width: 16px !important;
-        display: block !important;
-        background: #f1f1f1 !important;
-    }
-    
-    .gantt-scroll-x::-webkit-scrollbar-track {
-        background: #f1f1f1 !important;
-        border-radius: 8px !important;
-    }
-    
-    .gantt-scroll-x::-webkit-scrollbar-thumb {
-        background: #4a6cf7 !important;
-        border-radius: 8px !important;
-        border: 2px solid #f1f1f1 !important;
-    }
-    
-    .gantt-scroll-x::-webkit-scrollbar-thumb:hover {
-        background: #3498db !important;
-    }
-    
-    /* Cabecera de días - Mejorada para sticky completo */
-    .gantt-days-header {
+    /* Headers unificados - altura estándar de 60px */
+    .gantt-headers-row {
+        display: flex;
         position: sticky;
         top: 0;
-        z-index: 280;
-        background: #ffffff;
-        border-bottom: 3px solid #3498db;
-        display: flex;
-        min-height: 80px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        z-index: 300;
+        background: #fff;
+        border-bottom: 2px solid #2c3e50;
+    }
+    
+    /* === HEADERS OPTIMIZADOS === */
+    .gantt-sidebar-header,
+    .gantt-timeline-header {
+        height: 60px;
+        min-height: 60px;
+        max-height: 60px;
+        border-bottom: 1px solid #2c3e50;
         flex-shrink: 0;
-        /* Asegurar que se mantenga fijo en todos los casos */
-        width: 100%;
-        left: 0;
-        right: 0;
     }
     
     .gantt-sidebar-header {
         width: 300px;
         min-width: 300px;
-        background: #fff;
-        color: #111;
+        background: #34495e;
+        color: white;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: bold;
-        font-size: 1.2rem;
+        font-size: 1.1rem;
         border-right: 3px solid #2c3e50;
-        position: sticky;
-        left: 0;
         z-index: 290;
-        /* Asegurar que se mantenga fijo */
-        top: 0;
-        height: 80px;
+        box-sizing: border-box;
         letter-spacing: 0.5px;
         text-transform: uppercase;
+        margin: 0;
+        padding: 0 20px;
     }
     
     .gantt-timeline-header {
@@ -836,18 +1138,18 @@ document.addEventListener('DOMContentLoaded', function() {
         min-width: {{ $totalDays * 50 }}px;
         width: {{ $totalDays * 50 }}px;
         background: #ecf0f1;
-        overflow-x: hidden !important;
-        overflow-y: hidden !important;
-        position: relative;
-        top: 0;
+        overflow: hidden;
         z-index: 275;
         scroll-behavior: smooth;
+        will-change: transform; /* Optimizar para transforms */
+        transition: none; /* Sin transiciones para scroll suave */
     }
     
+    /* === COLUMNAS DE DÍAS OPTIMIZADAS === */
     .gantt-day-column {
         width: 50px;
         min-width: 50px;
-        height: 80px;
+        height: 60px;
         border-right: 1px solid #bdc3c7;
         display: flex;
         flex-direction: column;
@@ -856,11 +1158,16 @@ document.addEventListener('DOMContentLoaded', function() {
         background: #ecf0f1;
         transition: background-color 0.2s ease;
         position: relative;
-        flex-shrink: 0; /* Evitar que se compriman las columnas */
+        flex-shrink: 0;
+        box-sizing: border-box;
     }
     
     .gantt-day-column:hover {
         background: #d5dbdb;
+    }
+    
+    .gantt-day-column:last-child {
+        border-right: none;
     }
     
     .gantt-day-column.weekend {
@@ -872,13 +1179,13 @@ document.addEventListener('DOMContentLoaded', function() {
         background: #e67e22;
     }
     
-    /* Estilo especial para primer día del mes */
     .gantt-day-column.first-of-month {
         background: #3498db;
         color: white;
         border-right: 3px solid #2980b9;
         font-weight: 700;
     }
+    
     .gantt-day-column.first-of-month .gantt-day-number {
         font-size: 1.2rem;
         font-weight: 800;
@@ -891,10 +1198,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     .gantt-grid-column.first-of-month {
         border-right: 3px solid #3498db;
-    }
-    
-    .gantt-day-column:last-child {
-        border-right: none;
     }
     
     .gantt-day-number {
@@ -912,51 +1215,86 @@ document.addEventListener('DOMContentLoaded', function() {
         letter-spacing: 0.5px;
     }
     
-    /* Cuerpo del Gantt - Optimizado para scroll sincronizado y altura dinámica */
+    /* === CUERPO DEL GANTT OPTIMIZADO === */
     .gantt-body {
         display: flex;
         flex: 1;
-        overflow: hidden; /* Sin scroll directo en el body */
         position: relative;
-        height: auto; /* Altura dinámica */
+        overflow: hidden;
+        height: calc(100vh - 180px); /* Coordinado con el contenedor */
         min-height: 400px;
-        max-height: none; /* Sin restricción máxima */
+        max-height: calc(100vh - 180px);
         width: 100%;
-        /* Permitir que se ajuste al contenido y zoom */
+        align-items: flex-start;
+        margin: 0;
+        padding: 0;
+        border: 0;
     }
     
-    /* Sidebar con información de maquinarias - altura dinámica */
     .gantt-sidebar {
         width: 300px;
         min-width: 300px;
         background: #f8f9fa;
         border-right: 3px solid #2c3e50;
-        overflow-y: auto; /* SCROLL VERTICAL habilitado */
-        overflow-x: hidden; /* Sin scroll horizontal */
-        position: sticky;
-        left: 0;
-        z-index: 270;
+        overflow: hidden;
+        position: relative;
+        z-index: 300;
         flex-shrink: 0;
-        height: auto; /* Altura dinámica */
-        max-height: none; /* Sin restricción fija */
-        /* Se ajustará automáticamente al contenido */
+        height: 100%;
+        max-height: 100%;
+        transform-origin: top left;
+        display: flex;
+        flex-direction: column;
+        will-change: transform;
+    }
+    
+    .gantt-sidebar-content {
+        width: 100%;
+        height: auto;
+        display: flex;
+        flex-direction: column;
+        will-change: transform;
+        transition: none;
+        transform-origin: top left;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        gap: 0;
+        align-self: flex-start;
+        position: relative;
+        top: 0;
+        left: 0;
     }
     
     .gantt-centro-group {
-        margin-bottom: 2px;
+        margin-bottom: 0; /* Sin margen para evitar espacios entre centros */
+        margin: 0; /* Sin márgenes en ninguna dirección */
+        padding: 0; /* Sin padding que cause espacios */
+        border: none; /* Sin bordes que añadan tamaño */
+        /* Asegurar que no haya espacios entre grupos */
+        display: block;
     }
     
     .gantt-centro-header {
         display: flex;
-        justify-content: space-between;
+        justify-content: flex-start; /* Alinear a la izquierda pero con espacio */
         align-items: center;
-        padding: 15px 20px;
+        padding: 10px 40px; /* Más padding izquierdo para alejar del borde */
         background: #34495e;
         color: white;
-        margin-bottom: 0;
+        margin-bottom: 0; /* Sin margen inferior */
         cursor: pointer;
         transition: background-color 0.3s ease;
         user-select: none;
+        /* ALTURA FIJA IGUAL que maquinarias para alineación perfecta */
+        height: 60px;
+        min-height: 60px;
+        max-height: 60px;
+        box-sizing: border-box;
+        /* Eliminar cualquier margen adicional */
+        margin: 0;
+        border: none; /* Sin bordes que causen separación */
+        text-align: left; /* Alinear texto a la izquierda */
     }
     
     .gantt-centro-header:hover {
@@ -991,9 +1329,16 @@ document.addEventListener('DOMContentLoaded', function() {
     
     .gantt-centro-maquinarias {
         transition: max-height 0.3s ease, opacity 0.3s ease;
-        overflow-y: auto;
+        overflow: hidden; /* Sin scroll */
         background: #ffffff;
         max-height: none;
+        /* Asegurar alineación perfecta SIN gaps */
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+        padding: 0;
+        gap: 0; /* Sin espacios entre elementos hijos */
+        border: none;
     }
     
     .gantt-centro-maquinarias.collapsed {
@@ -1013,15 +1358,28 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     .gantt-maquinaria-row {
-        padding: 8px 20px 12px 20px; /* Menos padding arriba, más abajo */
-        border-bottom: 1px solid #dee2e6;
+        padding: 8px 50px; /* Más padding izquierdo para indentar las maquinarias */
         transition: all 0.2s ease;
         cursor: pointer;
         background: #ffffff;
-        height: 60px; /* Altura fija para alineación */
+        /* ALTURA FIJA para alineación perfecta con grilla */
+        height: 60px; 
+        min-height: 60px;
+        max-height: 60px;
         display: flex;
         align-items: center;
+        justify-content: flex-start; /* Alinear a la izquierda con espacio */
         box-sizing: border-box;
+        /* Asegurar que no se deforme con zoom */
+        flex-shrink: 0;
+        /* Eliminar cualquier margen que cause desalineación */
+        margin: 0;
+        margin-bottom: 0;
+        border: none; /* Sin border que afecte el tamaño */
+        /* Línea inferior sutil usando box-shadow para no afectar tamaño */
+        box-shadow: inset 0 -1px 0 0 #dee2e6 !important;
+        border-bottom: 1px solid #e9ecef; /* Línea adicional para asegurar visibilidad */
+        text-align: left; /* Alinear el texto a la izquierda */
     }
     
     .gantt-maquinaria-row:hover {
@@ -1041,6 +1399,8 @@ document.addEventListener('DOMContentLoaded', function() {
         overflow: hidden;
         text-overflow: ellipsis;
         line-height: 1.4;
+        text-align: left; /* Alinear texto a la izquierda */
+        width: 100%; /* Ocupar todo el ancho disponible */
     }
     
     .gantt-empty-sidebar {
@@ -1051,63 +1411,148 @@ document.addEventListener('DOMContentLoaded', function() {
         font-size: 1.1rem;
     }
     
-    /* Timeline con barras de tareas */
-    .gantt-timeline {
+    /* Contenedor del Timeline - alineación perfecta */
+    .gantt-timeline-container {
         flex: 1;
         position: relative;
-        overflow-x: auto !important; /* SCROLL HORIZONTAL habilitado */
-        overflow-y: hidden;
+        /* SCROLL PRINCIPAL - tanto vertical como horizontal */
+        overflow: auto;
         background: #fafafa;
-        min-width: calc({{ $totalDays }} * 50px);
-        width: 100%;
-        height: 100%;
         border-left: 2px solid #ddd;
+        /* Asegurar alineación perfecta */
+        margin: 0;
+        padding: 0;
+        border-top: 0;
+        border-bottom: 0;
+        border-right: 0;
     }
     
-    /* Grid de fondo */
+    /* Timeline - alineación perfecta con sidebar */
+    .gantt-timeline {
+        position: relative;
+        /* Sin scroll - el scroll está en el container padre */
+        overflow: hidden !important;
+        background: #fafafa;
+        min-width: calc({{ $totalDays }} * 50px);
+        width: calc({{ $totalDays }} * 50px);
+        height: auto;
+        min-height: 100%;
+        /* Asegurar alineación perfecta */
+        margin: 0;
+        padding: 0;
+        border: 0;
+        z-index: 10; /* Entre grilla (1) y barras (50) */
+    }
+    
+    /* Grid de fondo - alineación perfecta con sidebar sin headers */
     .gantt-grid {
         position: absolute;
-        top: 17px;
+        top: 0;
         left: 0;
-        width: 100%;
-        z-index: 1;
-        min-width: 100%;
-        width: 100%;
-        transform: translateY(0px);
-        transition: transform 0.1s ease-out;
-        /* La altura será ajustada dinámicamente por JS */
-        height: 400px;
-        min-height: 400px;
+        width: calc({{ $totalDays }} * 50px);
+        min-width: calc({{ $totalDays }} * 50px);
+        z-index: 1; /* Debajo del sidebar */
+        /* Altura dinámica que será calculada por JS */
+        height: auto;
+        min-height: 100%;
+        /* Sin transformaciones - se mueve con el scroll del body */
+        transform: none;
+        transition: none;
+        /* Asegurar alineación perfecta desde el inicio */
+        margin: 0;
+        padding: 0;
+        border: 0;
+        /* Iniciar desde el mismo punto que el sidebar */
+        vertical-align: top;
+        /* CRÍTICO: Sin scroll interno */
+        overflow: hidden !important;
+        pointer-events: auto; /* Permitir interacción con las celdas */
+        /* FORZAR que comience exactamente desde arriba */
+        line-height: 0;
+        font-size: 0;
     }
     
     .gantt-grid-row {
-        /* Elimina position absolute para que las filas se apilen verticalmente */
         position: relative;
         left: 0;
         width: 100%;
-        height: 60px; /* Altura fija para alineación */
+        height: auto; /* Altura automática, se define específicamente en cada tipo */
         display: flex;
         border-bottom: 1px solid #e0e0e0;
-        min-width: calc({{ $totalDays }} * 50px); /* Ancho mínimo para scroll horizontal */
-        width: max(100%, calc({{ $totalDays }} * 50px));
-        overflow-x: hidden !important;
-        overflow: -moz-scrollbars-none;
-        -ms-overflow-style: none;
-        scrollbar-width: none;
+        /* Ancho completo para scroll horizontal */
+        min-width: calc({{ $totalDays }} * 50px);
+        width: calc({{ $totalDays }} * 50px);
+        /* Sin scroll propio y alineación perfecta */
+        overflow: hidden;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+        /* ELIMINAR cualquier espacio entre filas */
+        line-height: 0;
+        font-size: 0;
+        /* Asegurar que cada fila ocupe exactamente su altura */
+        flex-shrink: 0;
     }
     .gantt-grid-row::-webkit-scrollbar {
         display: none !important;
     }
     
+    /* Asegurar que ningún elemento interno tenga scroll no deseado */
+    .gantt-grid *,
+    .gantt-timeline *,
+    .gantt-grid-row *,
+    .gantt-grid-cell * {
+        overflow: hidden !important;
+        -ms-overflow-style: none !important;
+        scrollbar-width: none !important;
+    }
+    
+    /* === RESET COMPLETO PARA ALINEACIÓN PERFECTA === */
+    .gantt-sidebar-content,
+    .gantt-sidebar-content *,
+    .gantt-grid,
+    .gantt-grid * {
+        margin: 0 !important;
+        padding: 0;
+        border: 0;
+        vertical-align: baseline;
+    }
+
+    /* === ALINEACIÓN PERFECTA: TODOS 60px === */
+    .gantt-grid-centro-header,
+    .gantt-grid-maquinaria-row,
+    .gantt-grid-row[data-type="centro"],
+    .gantt-grid-row[data-type="maquinaria"] {
+        height: 60px !important;
+        min-height: 60px !important;
+        max-height: 60px !important;
+        box-sizing: border-box !important;
+        /* Línea inferior sutil para separar filas - color más visible */
+        box-shadow: inset 0 -1px 0 0 #dee2e6 !important;
+        border-bottom: 1px solid #e9ecef !important; /* Línea adicional para asegurar visibilidad */
+    }
+
+    /* Asegurar que elementos del sidebar también mantengan 60px */
+    .gantt-centro-header {
+        height: 60px !important;
+        min-height: 60px !important;
+        max-height: 60px !important;
+        box-sizing: border-box !important;
+        padding: 10px 20px !important;
+    }
+    
     .gantt-grid-cell {
         width: 50px;
         min-width: 50px;
-        height: 100%;
-        border-right: 1px solid #e0e0e0;
+        height: 100%; /* Se adapta a la altura de la fila contenedora */
+        border: none; /* Sin border que afecte el tamaño */
         background: #ffffff;
         transition: background-color 0.2s ease;
         flex-shrink: 0; /* Evitar que se compriman las celdas */
         overflow: hidden !important;
+        box-sizing: border-box; /* Asegurar cálculo consistente */
+        /* Línea derecha usando box-shadow para no afectar tamaño */
+        box-shadow: inset -1px 0 0 0 #e0e0e0;
     }
     
     .gantt-grid-cell:hover {
@@ -1144,16 +1589,15 @@ document.addEventListener('DOMContentLoaded', function() {
         height: 45px;
         background-color: #4a6cf7;
         border-radius: 8px;
-        z-index: 10;
+        z-index: 50; /* Entre grilla (1) y sidebar (300) */
         cursor: move;
         color: white;
         overflow: hidden;
         box-shadow: 0 4px 8px rgba(0,0,0,0.15);
         transition: all 0.3s ease;
         border: 2px solid transparent;
-        /* Centrering vertical mejorado */
-        top: 50%;
-        transform: translateY(-50%);
+        /* Sin transformaciones automáticas - usar posicionamiento directo */
+        transform: none;
         margin-top: 0;
         /* Preparado para transformaciones de scroll */
         will-change: transform;
@@ -1167,8 +1611,8 @@ document.addEventListener('DOMContentLoaded', function() {
     .gantt-task-bar:hover {
         box-shadow: 0 6px 15px rgba(0,0,0,0.25);
         border-color: #ffffff;
-        /* Mantener transformación durante hover */
-        transform: translateY(-50%) translateY(-2px);
+        /* Mantener sin transformaciones adicionales */
+        transform: none;
     }
     
     .gantt-task-bar.dragging {
@@ -1574,14 +2018,107 @@ document.addEventListener('DOMContentLoaded', function() {
         margin-top: 20px;
     }
 
-    /* Forzar scroll horizontal en dispositivos de pantalla grande */
+    /* Responsive del Header */
+    @media (max-width: 768px) {
+        .gantt-header {
+            flex-direction: column;
+            gap: 8px; /* Reducido */
+            padding: 8px 15px;
+            min-height: 40px;
+            max-height: none;
+        }
+        
+        .gantt-header-left,
+        .gantt-header-center,
+        .gantt-header-right {
+            min-width: unset;
+            max-width: none;
+            flex: unset;
+        }
+        
+        .gantt-header-center {
+            order: 3;
+        }
+        
+        .gantt-header-right {
+            order: 2;
+            justify-content: center;
+        }
+        
+        .gantt-title {
+            font-size: 1.4rem; /* Reducido */
+            text-align: center;
+        }
+        
+        .gantt-month-navigation {
+            height: 28px; /* Más compacto en móvil */
+            padding: 8px 14px;
+        }
+        
+        .gantt-nav-btn,
+        .gantt-nav-btn-today {
+            height: 22px;
+            padding: 3px 6px;
+            font-size: 0.7rem;
+            min-width: 40px;
+        }
+        
+        .gantt-search-input {
+            width: 140px; /* Más estrecho en móvil */
+            font-size: 0.75rem;
+        }
+        
+        .search-container {
+            height: 28px; /* Coherente con navegación */
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .gantt-header {
+            padding: 6px 10px;
+        }
+        
+        .gantt-title {
+            font-size: 1.2rem;
+        }
+        
+        .gantt-search-input {
+            width: 120px;
+            font-size: 0.7rem;
+        }
+        
+        .gantt-month-navigation {
+            height: 26px;
+            padding: 2px 6px;
+        }
+        
+        .gantt-nav-btn,
+        .gantt-nav-btn-today {
+            height: 20px;
+            padding: 2px 4px;
+            font-size: 0.65rem;
+            min-width: 35px;
+        }
+        
+        .gantt-nav-btn span {
+            display: none; /* Ocultar texto en móviles pequeños */
+        }
+    }
+
+    /* Media query optimizada para pantallas grandes */
     @media (min-width: 1024px) {
-        .gantt-timeline-header {
-            overflow-x: scroll !important;
+        .gantt-timeline-container {
+            overflow-x: auto !important;
+            overflow-y: auto !important;
         }
         
         .gantt-timeline {
-            overflow-x: scroll !important;
+            overflow: hidden !important; /* Sin scroll interno */
+        }
+        
+        .gantt-timeline-header {
+            overflow: hidden !important; /* Sin scroll interno para sincronización */
+            will-change: transform;
         }
         
         .gantt-grid {
@@ -1693,33 +2230,8 @@ document.addEventListener('DOMContentLoaded', function() {
     .gantt-timeline, .gantt-sidebar, .gantt-body, .gantt-chart-container {
         scroll-behavior: smooth;
     }
-    
-    /* Asegurar que las cabeceras permanezcan fijas */
-    .gantt-days-header {
-        position: sticky;
-        top: 0;
-        z-index: 300;
-        background: #ffffff;
-        border-bottom: 3px solid #3498db;
-        display: flex;
-        min-height: 80px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-        flex-shrink: 0;
-    }
-    
-    .gantt-sidebar-header {
-        position: sticky;
-        top: 0;
-        z-index: 310;
-        background: #34495e;
-    }
-    
-    /* Asegurar que el contenido del gantt-body tenga la altura correcta para scroll */
-    .gantt-body {
-        /* La altura será ajustada dinámicamente por JS si es necesario */
-    }
 </style>
-
+<!--
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     const prevSemesterBtn = document.getElementById('prevSemester');
@@ -1745,140 +2257,47 @@ document.addEventListener('DOMContentLoaded', function() {
             maquinariasContainer.classList.add('collapsed');
             toggleIcon.classList.add('collapsed');
         }
-        // Actualizar posiciones de las barras de tareas después de colapsar/expandir
+        
+        // CRÍTICO: Re-sincronizar la grilla después del colapso/expansión
         setTimeout(() => {
-            updateTaskPositions();
-            // También ajustar alturas dinámicas
-            adjustDynamicHeights();
-        }, 300);
+            syncCollapseWithGrid(); // Esto re-renderiza la grilla completa
+            setDynamicHeights(); // Ajustar alturas dinámicas
+            
+            // Re-configurar scroll después de cambios en la estructura
+            if (window.ganttScrollConfigured) {
+                console.log('Re-configurando scroll después de toggle...');
+                // El scroll ya está configurado, solo necesitamos asegurar que funcione
+            }
+        }, 350); // Esperar a que termine la animación
     }
     
-    // Función para calcular y ajustar alturas dinámicamente según contenido y zoom
-    function adjustDynamicHeights() {
-        const ganttContainer = document.querySelector('.gantt-container');
-        const ganttBody = document.querySelector('.gantt-body');
-        const ganttSidebar = document.querySelector('.gantt-sidebar');
-        const ganttChartContainer = document.querySelector('.gantt-chart-container');
-        const ganttTimeline = document.getElementById('ganttTimeline');
-        
-        if (!ganttContainer || !ganttBody || !ganttSidebar || !ganttChartContainer) return;
-        
-        // Obtener el factor de zoom actual
-        const zoomLevel = window.devicePixelRatio || 1;
-        const computedZoom = parseFloat(getComputedStyle(document.documentElement).zoom || 1);
-        const totalZoom = zoomLevel * computedZoom;
-        
-        // Calcular altura real del contenido del sidebar
-        let contentHeight = 0;
-        const centroGroups = ganttSidebar.querySelectorAll('.gantt-centro-group');
-        centroGroups.forEach(group => {
-            const header = group.querySelector('.gantt-centro-header');
-            const maquinarias = group.querySelector('.gantt-centro-maquinarias');
-            
-            if (header) contentHeight += header.offsetHeight;
-            
-            if (maquinarias && !maquinarias.classList.contains('collapsed')) {
-                const rows = maquinarias.querySelectorAll('.gantt-maquinaria-row');
-                rows.forEach(row => {
-                    contentHeight += row.offsetHeight;
-                });
-            }
-        });
-        
-        // Ajustar por zoom - cuando hay zoom, necesitamos más espacio vertical
-        const zoomAdjustment = Math.max(1, 1 / totalZoom);
-        const adjustedContentHeight = contentHeight * zoomAdjustment;
-        
-        // Calcular altura disponible del viewport
-        const viewportHeight = window.innerHeight;
-        const headerHeight = document.querySelector('.gantt-header')?.offsetHeight || 0;
-        const searchHeight = document.querySelector('.gantt-search-section')?.offsetHeight || 0;
-        const daysHeaderHeight = document.querySelector('.gantt-days-header')?.offsetHeight || 0;
-        
-        const availableHeight = viewportHeight - headerHeight - searchHeight - daysHeaderHeight - 40; // 40px margin
-        const maxHeight = Math.max(400, Math.min(availableHeight, adjustedContentHeight + 100));
-        
-        // Aplicar alturas dinámicas
-        ganttBody.style.height = maxHeight + 'px';
-        ganttSidebar.style.height = maxHeight + 'px';
-        ganttSidebar.style.maxHeight = maxHeight + 'px';
-        
-        if (ganttTimeline) {
-            ganttTimeline.style.height = maxHeight + 'px';
-            ganttTimeline.style.maxHeight = maxHeight + 'px';
-        }
-        
-        // Ajustar el contenedor principal
-        ganttChartContainer.style.height = maxHeight + 'px';
-        ganttChartContainer.style.maxHeight = maxHeight + 'px';
-        
-        console.log('Dynamic height adjustment:', {
-            zoomLevel,
-            computedZoom,
-            totalZoom,
-            contentHeight,
-            adjustedContentHeight,
-            maxHeight,
-            viewportHeight
-        });
+    // FUNCIÓN ELIMINADA: adjustDynamicHeights() - Ya no es necesaria
+    // Usamos setDynamicHeights() que es más precisa
+    }
+    
+    // FUNCIÓN DESACTIVADA: Sistema de scroll ya configurado en el primer script
+    function syncHeaderScroll() {
+        console.log('syncHeaderScroll DESACTIVADO - usando sistema unificado del primer script');
+        // Esta función ya no es necesaria porque el scroll se maneja en syncScroll()
     }
     
     // Función para actualizar las posiciones de las barras de tareas
+    // FUNCIÓN SIMPLIFICADA: Solo actualizar posiciones - OBSOLETA
+    // Ya no es necesaria porque renderTaskBars() maneja todo automáticamente
     function updateTaskPositions() {
-        window.maquinariaPositions = {};
-        let currentPosition = 0;
-        // Ajuste: offset para alinear perfectamente el sidebar y las barras con la grilla
-        const GRID_ROW_HEIGHT = 60;
-        const BAR_HEIGHT = 45; // Altura real de la barra
-        let sidebarOffset = 0;
-        // Detectar si hay un header sticky en el sidebar
-        const sidebarHeader = document.querySelector('.gantt-sidebar-header');
-        if (sidebarHeader) {
-            sidebarOffset = (sidebarHeader.offsetHeight || 0) - 18; // Subimos el sidebar 12px más
-        }
-        let accumulatedTop = sidebarOffset;
-        document.querySelectorAll('.gantt-centro-group').forEach(centroGroup => {
-            // Sumar la altura del header del centro antes de las maquinarias
-            accumulatedTop += 54; // CENTRO_HEADER_HEIGHT
-            const maquinariasContainer = centroGroup.querySelector('.gantt-centro-maquinarias');
-            if (!maquinariasContainer.classList.contains('collapsed')) {
-                // Solo contar maquinarias si el grupo está expandido
-                const maquinariaRows = maquinariasContainer.querySelectorAll('.gantt-maquinaria-row');
-                maquinariaRows.forEach(row => {
-                    const maquinariaId = row.getAttribute('data-maquinaria-id');
-                    window.maquinariaPositions[maquinariaId] = accumulatedTop + (GRID_ROW_HEIGHT - BAR_HEIGHT) / 2;
-                    accumulatedTop += GRID_ROW_HEIGHT;
-                });
-            }
-        });
-        // Actualizar posiciones de todas las barras de tareas
-        document.querySelectorAll('.gantt-task-bar').forEach(taskBar => {
-            const maquinariaId = taskBar.getAttribute('data-maquinaria-id');
-            if (maquinariaId && maquinariaPositions[maquinariaId] !== undefined) {
-                taskBar.style.top = maquinariaPositions[maquinariaId] + 'px';
-                taskBar.style.display = 'block';
-            } else if (maquinariaId) {
-                // Ocultar barras de tareas si el centro está colapsado
-                taskBar.style.display = 'none';
-            }
-        });
-        
-        // Ajuste visual: subir el sidebar para alinear con la grilla
-        const sidebar = document.querySelector('.gantt-sidebar');
-        if (sidebar) {
-            sidebar.style.marginTop = sidebarOffset + 'px';
-        }
-        
-        // Actualizar alturas dinámicamente después de cambios
-        adjustDynamicHeights();
-        
-        console.log('Posiciones de tareas actualizadas, altura total:', accumulatedTop);
+        // Esta función ahora solo re-renderiza las barras
+        renderTaskBars();
+        console.log('Posiciones de tareas actualizadas via re-renderizado');
     }
     
     // Hacer la función global para poder usarla desde el HTML
     window.toggleCentroGroup = toggleCentroGroup;
     
-    // Sincronizar scroll entre header y timeline - MEJORADO
+    // Inicializar scroll simple - solo header horizontal
+    syncHeaderScroll();
+    
+    // Ajustar alturas iniciales
+    adjustDynamicHeights();
     const timelineHeader = document.querySelector('.gantt-timeline-header');
     const timelineContent = document.querySelector('.gantt-timeline');
     const ganttBody = document.querySelector('.gantt-body');
@@ -1972,113 +2391,8 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // Función para sincronizar el scroll vertical (sidebar -> grid)
-        function syncVerticalScroll(scrollTop) {
-            const ganttGrid = document.querySelector('.gantt-grid');
-            const taskBars = document.querySelectorAll('.gantt-task-bar');
-            
-            if (ganttGrid) {
-                // Mover el grid verticalmente (negativo porque el grid debe moverse opuesto al scroll)
-                ganttGrid.style.transform = `translateY(-${scrollTop}px)`;
-                
-                // Mover todas las barras de tareas también para mantener alineación
-                taskBars.forEach(taskBar => {
-                    // Obtener la posición original de la tarea
-                    const originalTop = taskBar.getAttribute('data-original-top') || taskBar.style.top;
-                    if (!taskBar.getAttribute('data-original-top')) {
-                        taskBar.setAttribute('data-original-top', taskBar.style.top);
-                    }
-                    
-                    // Aplicar el offset del scroll
-                    const originalTopValue = parseFloat(originalTop) || 0;
-                    const newTop = originalTopValue - scrollTop;
-                    taskBar.style.transform = `translateY(${-scrollTop}px)`;
-                });
-                
-                console.log('📐 Scroll Vertical sincronizado:', scrollTop);
-            }
-        }
-        
-        // Función para sincronizar el scroll horizontal (solo header)
-        function syncHorizontalScroll(scrollLeft) {
-            // Sincronizar el header de días horizontalmente
-            timelineHeader.scrollLeft = scrollLeft;
-            
-            console.log('📏 Scroll Horizontal sincronizado:', scrollLeft);
-            
-            // Calcular día preciso
-            calculateCurrentDay(scrollLeft);
-        }
-        
-        // Sidebar scroll (vertical) - controla el movimiento del grid
-        const sidebar = document.querySelector('.gantt-sidebar');
-        if (sidebar) {
-            sidebar.addEventListener('scroll', function(e) {
-                if (!isScrolling) {
-                    isScrolling = true;
-                    // Solo sincronizar scroll vertical
-                    syncVerticalScroll(this.scrollTop);
-                    
-                    requestAnimationFrame(() => {
-                        isScrolling = false;
-                    });
-                }
-            });
-        }
-        
-        // Timeline scroll (horizontal) - controla el movimiento de los días
-        timelineContent.addEventListener('scroll', function(e) {
-            if (!isScrolling) {
-                isScrolling = true;
-                // Solo sincronizar scroll horizontal
-                syncHorizontalScroll(this.scrollLeft);
-                
-                requestAnimationFrame(() => {
-                    isScrolling = false;
-                });
-            }
-        });
-        
-        // Header de timeline scroll (horizontal) - sincronizar de vuelta al timeline
-        timelineHeader.addEventListener('scroll', function(e) {
-            if (!isScrolling) {
-                isScrolling = true;
-                // Sincronizar timeline horizontal
-                timelineContent.scrollLeft = this.scrollLeft;
-                console.log('🔄 Scroll Header -> Timeline:', this.scrollLeft);
-                
-                // Calcular día preciso
-                calculateCurrentDay(this.scrollLeft);
-                
-                requestAnimationFrame(() => {
-                    isScrolling = false;
-                });
-            }
-        });
-        
-        // Gantt Body scroll - dividir en horizontal y vertical
-        ganttBody.addEventListener('scroll', function(e) {
-            if (!isScrolling) {
-                isScrolling = true;
-                
-                // Sincronizar scroll horizontal con header de días
-                if (this.scrollLeft !== timelineHeader.scrollLeft) {
-                    syncHorizontalScroll(this.scrollLeft);
-                }
-                
-                // Sincronizar scroll vertical con sidebar
-                if (sidebar && this.scrollTop !== sidebar.scrollTop) {
-                    sidebar.scrollTop = this.scrollTop;
-                    syncVerticalScroll(this.scrollTop);
-                }
-                
-                requestAnimationFrame(() => {
-                    isScrolling = false;
-                });
-            }
-        });
-        
-        console.log('✅ Scroll vertical y horizontal sincronizado correctamente');
+        // Función para sincronizar el scroll vertical (sidebar -> grid) - ELIMINADA - no necesaria
+        // Función para sincronizar el scroll horizontal (solo header) - ELIMINADA - simplificada
         
         // Inicializar posiciones originales de las barras de tareas
         document.querySelectorAll('.gantt-task-bar').forEach(taskBar => {
@@ -2638,13 +2952,17 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     // Navegación entre semestres
-    prevSemesterBtn.addEventListener('click', function() {
-        navigateSemester(-1);
-    });
+    if (prevSemesterBtn) {
+        prevSemesterBtn.addEventListener('click', function() {
+            navigateSemester(-1);
+        });
+    }
     
-    nextSemesterBtn.addEventListener('click', function() {
-        navigateSemester(1);
-    });
+    if (nextSemesterBtn) {
+        nextSemesterBtn.addEventListener('click', function() {
+            navigateSemester(1);
+        });
+    }
     
     function navigateSemester(direction) {
         currentSemester += direction;
@@ -2823,49 +3141,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Event listeners para ajuste dinámico de alturas
+    // Event listeners simplificados
     window.addEventListener('resize', function() {
-        console.log('Window resized, adjusting heights...');
         setTimeout(adjustDynamicHeights, 100);
     });
     
-    // Detectar cambios de zoom del navegador
-    window.addEventListener('load', function() {
+    // Ajuste inicial simple
+    setTimeout(() => {
         adjustDynamicHeights();
-    });
-    
-    // Detectar zoom con media queries (funciona en la mayoría de navegadores)
-    const zoomMediaQuery = window.matchMedia('(min-resolution: 1dppx)');
-    zoomMediaQuery.addEventListener('change', function() {
-        console.log('Zoom changed, adjusting heights...');
-        setTimeout(adjustDynamicHeights, 150);
-    });
-    
-    // Observar cambios en el DOM que puedan afectar el layout
-    const observer = new MutationObserver(function(mutations) {
-        let shouldUpdate = false;
-        mutations.forEach(function(mutation) {
-            if (mutation.type === 'childList' || 
-                (mutation.type === 'attributes' && 
-                 (mutation.attributeName === 'class' || mutation.attributeName === 'style'))) {
-                shouldUpdate = true;
-            }
-        });
-        if (shouldUpdate) {
-            setTimeout(adjustDynamicHeights, 50);
-        }
-    });
-    
-    observer.observe(document.querySelector('.gantt-sidebar'), {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['class', 'style']
-    });
-    
-    // Ajuste inicial
-    setTimeout(adjustDynamicHeights, 500);
+        console.log('Sistema de scroll simplificado inicializado');
+    }, 500);
 });
 </script>
-
+-->
 @endsection
