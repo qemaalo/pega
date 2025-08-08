@@ -7,6 +7,7 @@ use App\Models\Centro;
 use App\Models\Maquinaria;
 use Illuminate\Http\Request;
 use Carbon\Carbon;
+use Illuminate\Support\Facades\Log;
 
 class GanttController extends Controller
 {
@@ -107,10 +108,61 @@ class GanttController extends Controller
         ]);
     }
     
-    // Mantener store vacío para no romper las rutas resource
     public function store(Request $request)
     {
-        return redirect()->route('compromops.index')->with('error', 'La creación de tareas está desactivada');
+        // Validar los datos recibidos
+        $rules = [
+            'op' => 'required|string|max:255',
+            'np' => 'required|string|max:255',
+            'linea' => 'required|string|max:255',
+            'usuario' => 'required|string|max:255',
+            'maquinaria_id' => 'required|exists:maquinarias,id',
+            'finicio' => 'required|date',
+            'ftermino' => 'required|date|after_or_equal:finicio',
+            'observaciones' => 'nullable|string|max:1000'
+        ];
+
+        $request->validate($rules);
+
+        try {
+            // Crear nueva tarea
+            $task = Compromops::create([
+                'op' => $request->op,
+                'np' => $request->np,
+                'linea' => $request->linea,
+                'usuario' => $request->usuario,
+                'maquinaria_id' => $request->maquinaria_id,
+                'finicio' => Carbon::createFromFormat('Y-m-d', $request->finicio),
+                'ftermino' => Carbon::createFromFormat('Y-m-d', $request->ftermino),
+                'observaciones' => $request->observaciones,
+                'created_at' => now(),
+                'updated_at' => now()
+            ]);
+
+            // Si es petición AJAX, devolver JSON
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Tarea creada exitosamente',
+                    'task' => $task->load('maquinaria.centro')
+                ]);
+            }
+
+            // Si es petición normal, redirigir
+            return redirect()->route('compromops.index')->with('success', 'Tarea creada exitosamente');
+
+        } catch (\Exception $e) {
+            Log::error('Error creando tarea: ' . $e->getMessage());
+            
+            if ($request->ajax() || $request->wantsJson()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Error al crear la tarea: ' . $e->getMessage()
+                ], 500);
+            }
+
+            return redirect()->back()->with('error', 'Error al crear la tarea: ' . $e->getMessage());
+        }
     }
     
     public function update(Request $request, $id)

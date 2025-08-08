@@ -141,48 +141,441 @@
 <!-- Script para renderizar la grilla y las barras dinámicamente -->
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('🚀 SCRIPT INICIADO - DOM CARGADO');
     
     const ganttGrid = document.querySelector('.gantt-grid');
     const ganttBody = document.querySelector('.gantt-body');
     const ganttTimelineContainer = document.getElementById('ganttTimelineContainer');
     const ganttTimeline = document.getElementById('ganttTimeline');
     const sidebar = document.getElementById('ganttSidebar');
+    
+    console.log('📋 Elementos DOM encontrados:', {
+        ganttGrid: !!ganttGrid,
+        ganttBody: !!ganttBody, 
+        ganttTimelineContainer: !!ganttTimelineContainer,
+        ganttTimeline: !!ganttTimeline,
+        sidebar: !!sidebar
+    });
+    
+    console.log('📊 Verificando datos:', window.ganttData);
+    
     const { centros, tasks, startDate, endDate, totalDays } = window.ganttData;
 
-    // FUNCIÓN GLOBAL: Configurar eventos de barras de tareas  
+    // FUNCIÓN GLOBAL: Configurar eventos de barras de tareas con drag & drop completo
     window.setupTaskBarEvents = function(taskBar) {
+        console.log('🎯 EJECUTANDO setupTaskBarEvents para:', taskBar.getAttribute('data-task-id'));
+        
         // Verificar si la tarea está inactiva
         if (taskBar.getAttribute('data-activo') === "0") {
+            console.log('⚠️ Tarea inactiva, saltando configuración');
             return;
         }
 
-        // Agregar eventos básicos de arrastre
+        // Variables de estado para esta barra específica
+        let isDragging = false;
+        let isResizing = false;
+        let resizeType = null; // 'left' o 'right'
+        let initialMouseX = 0;
+        let initialMouseY = 0;
+        let initialLeft = 0;
+        let initialTop = 0;
+        let initialWidth = 0;
+        let draggedToNewMaquinaria = false;
+
+        // Variables para las posiciones de las maquinarias
+        const maquinariaPositions = JSON.parse(ganttGrid.dataset.maquinariaPositions || '{}');
+        const rowHeight = 60;
+        const dayWidth = 50;
+
+        // FUNCIÓN: Formatear fecha para envío al servidor
+        function formatDateForServer(date) {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            const day = String(date.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        // FUNCIÓN: Calcular fechas desde posición en pixels
+        function calculateDatesFromPosition(leftPx, widthPx) {
+            const startDay = Math.max(0, Math.floor(leftPx / dayWidth));
+            const durationDays = Math.max(1, Math.floor(widthPx / dayWidth));
+            
+            // Crear fecha base usando el mismo método que addDays
+            const parts = startDate.split('-');
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]) - 1;
+            const day = parseInt(parts[2]);
+            
+            const calculatedStartDate = new Date(year, month, day);
+            calculatedStartDate.setDate(calculatedStartDate.getDate() + startDay);
+
+            const calculatedEndDate = new Date(year, month, day);
+            calculatedEndDate.setDate(calculatedEndDate.getDate() + startDay + durationDays - 1);
+
+            console.log('Cálculo de fechas:', {
+                leftPx,
+                widthPx,
+                startDay,
+                durationDays,
+                startDateStr: startDate,
+                calculatedStartDate: formatDate(calculatedStartDate),
+                calculatedEndDate: formatDate(calculatedEndDate)
+            });
+
+            return {
+                startDate: calculatedStartDate,
+                endDate: calculatedEndDate
+            };
+        }
+
+        // FUNCIÓN: Obtener maquinaria desde coordenada Y
+        function getMaquinariaFromY(y) {
+            let closestMaquinariaId = null;
+            let closestDistance = Infinity;
+            
+            Object.keys(maquinariaPositions).forEach(maqId => {
+                const maqY = maquinariaPositions[maqId] + (rowHeight / 2);
+                const distance = Math.abs(y - maqY);
+                if (distance < closestDistance && distance < rowHeight / 2) {
+                    closestDistance = distance;
+                    closestMaquinariaId = maqId;
+                }
+            });
+            
+            return closestMaquinariaId;
+        }
+
+        // FUNCIÓN: Enviar actualización al servidor usando tu método ajaxUpdate
+        function updateTaskDatesInDB(taskBar) {
+            const taskId = taskBar.getAttribute('data-task-id');
+            const startDate = taskBar.getAttribute('data-start-date');
+            const endDate = taskBar.getAttribute('data-end-date');
+            const maquinariaId = taskBar.getAttribute('data-maquinaria-id');
+            
+            console.log('Enviando actualización para tarea:', {
+                id: taskId,
+                finicio: startDate,
+                ftermino: endDate,
+                maquinaria_id: maquinariaId
+            });
+            
+            const formData = new FormData();
+            formData.append('finicio', startDate);
+            formData.append('ftermino', endDate);
+            if (maquinariaId) {
+                formData.append('maquinaria_id', maquinariaId);
+            }
+            formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
+            
+            // Usar la misma lógica de URL de tu código de ejemplo
+            let baseUrl = window.location.origin;
+            const url = baseUrl.includes('localhost') 
+                ? `${baseUrl}/compromops/${taskId}/ajax-update`
+                : `${baseUrl}/example-app2/public/compromops/${taskId}/ajax-update`;
+            
+            console.log('URL de actualización:', url);
+            
+            fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                },
+                body: formData
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.text().then(text => {
+                        console.error('Respuesta de error:', text);
+                        throw new Error(`Error ${response.status}: ${text.substring(0, 100)}...`);
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                console.log('Tarea actualizada:', data);
+                showNotification('Tarea actualizada correctamente');
+                
+                // Actualizar el color de la barra si cambió de maquinaria
+                if (draggedToNewMaquinaria) {
+                    // Aquí podrías actualizar el color según el centro
+                    taskBar.style.backgroundColor = '#4a6cf7'; // Color por defecto
+                    draggedToNewMaquinaria = false;
+                }
+            })
+            .catch(error => {
+                console.error('Error al actualizar:', error);
+                showNotification('Error al actualizar la tarea: ' + error.message, true);
+                // Revertir posición en caso de error
+                renderTaskBars();
+            });
+        }
+
+        // FUNCIÓN: Mostrar notificación (adaptada de tu código)
+        function showNotification(message, isError = false) {
+            const notification = document.createElement('div');
+            notification.className = `gantt-notification ${isError ? 'gantt-notification-error' : 'gantt-notification-success'}`;
+            notification.textContent = message;
+            
+            document.body.appendChild(notification);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateY(0)';
+                notification.style.opacity = '1';
+            }, 10);
+            
+            setTimeout(() => {
+                notification.style.transform = 'translateY(-20px)';
+                notification.style.opacity = '0';
+                
+                setTimeout(() => {
+                    if (document.body.contains(notification)) {
+                        document.body.removeChild(notification);
+                    }
+                }, 300);
+            }, 3000);
+        }
+
+        // EVENT LISTENERS GLOBALES para mousemove y mouseup
+        function handleMouseMove(e) {
+            if (!isDragging && !isResizing) return;
+
+            const timelineRect = ganttTimeline.getBoundingClientRect();
+            const mouseX = e.clientX - timelineRect.left;
+            const mouseY = e.clientY - timelineRect.top;
+
+            if (isDragging) {
+                // DRAG: Mover toda la barra
+                const deltaX = e.clientX - initialMouseX;
+                const deltaY = e.clientY - initialMouseY;
+                
+                let newLeft = initialLeft + deltaX;
+                let newTop = initialTop + deltaY;
+                
+                // Snap a la grilla de días (ajuste horizontal)
+                newLeft = Math.round(newLeft / dayWidth) * dayWidth;
+                
+                // Limitar a los bordes del timeline
+                newLeft = Math.max(0, Math.min(newLeft, (totalDays - 1) * dayWidth));
+                
+                // Snap a filas de maquinarias (ajuste vertical)
+                let targetMaquinariaId = getMaquinariaFromY(mouseY);
+                if (targetMaquinariaId && maquinariaPositions[targetMaquinariaId]) {
+                    newTop = maquinariaPositions[targetMaquinariaId] + (rowHeight - 45) / 2;
+                    
+                    // Marcar si cambió de maquinaria
+                    const originalMaquinariaId = taskBar.getAttribute('data-maquinaria-id');
+                    if (targetMaquinariaId !== originalMaquinariaId) {
+                        draggedToNewMaquinaria = true;
+                        taskBar.setAttribute('data-maquinaria-id', targetMaquinariaId);
+                    }
+                }
+                
+                taskBar.style.left = newLeft + 'px';
+                taskBar.style.top = newTop + 'px';
+                
+            } else if (isResizing) {
+                // RESIZE: Cambiar ancho de la barra
+                const deltaX = e.clientX - initialMouseX;
+                
+                if (resizeType === 'left') {
+                    // Resize desde la izquierda (cambiar inicio)
+                    let newLeft = initialLeft + deltaX;
+                    newLeft = Math.round(newLeft / dayWidth) * dayWidth;
+                    newLeft = Math.max(0, Math.min(newLeft, initialLeft + initialWidth - dayWidth));
+                    
+                    let newWidth = initialLeft + initialWidth - newLeft;
+                    newWidth = Math.max(dayWidth, newWidth);
+                    
+                    taskBar.style.left = newLeft + 'px';
+                    taskBar.style.width = newWidth + 'px';
+                    
+                    console.log('Resize izquierdo:', { newLeft, newWidth });
+                    
+                } else if (resizeType === 'right') {
+                    // Resize desde la derecha (cambiar duración)
+                    let newWidth = initialWidth + deltaX;
+                    newWidth = Math.round(newWidth / dayWidth) * dayWidth;
+                    newWidth = Math.max(dayWidth, Math.min(newWidth, (totalDays * dayWidth) - initialLeft));
+                    
+                    taskBar.style.width = newWidth + 'px';
+                    
+                    console.log('Resize derecho:', { newWidth });
+                }
+            }
+            
+            e.preventDefault();
+        }
+
+        function handleMouseUp(e) {
+            if (!isDragging && !isResizing) return;
+
+            if (isDragging) {
+                isDragging = false;
+                taskBar.classList.remove('dragging');
+                
+                // Calcular nuevas fechas y actualizar atributos
+                const newLeft = parseInt(taskBar.style.left);
+                const width = parseInt(taskBar.style.width);
+                
+                const dates = calculateDatesFromPosition(newLeft, width);
+                
+                taskBar.setAttribute('data-start-date', formatDateForServer(dates.startDate));
+                taskBar.setAttribute('data-end-date', formatDateForServer(dates.endDate));
+                
+                console.log('Drag finalizado:', {
+                    newLeft,
+                    width,
+                    startDate: formatDateForServer(dates.startDate),
+                    endDate: formatDateForServer(dates.endDate),
+                    maquinariaId: taskBar.getAttribute('data-maquinaria-id')
+                });
+                
+                // Enviar actualización al servidor
+                updateTaskDatesInDB(taskBar);
+                
+            } else if (isResizing) {
+                isResizing = false;
+                resizeType = null;
+                taskBar.classList.remove('resizing');
+                
+                // Calcular nuevas fechas y actualizar atributos
+                const newLeft = parseInt(taskBar.style.left);
+                const width = parseInt(taskBar.style.width);
+                
+                const dates = calculateDatesFromPosition(newLeft, width);
+                
+                taskBar.setAttribute('data-start-date', formatDateForServer(dates.startDate));
+                taskBar.setAttribute('data-end-date', formatDateForServer(dates.endDate));
+                
+                console.log('Resize finalizado:', {
+                    newLeft,
+                    width,
+                    startDate: formatDateForServer(dates.startDate),
+                    endDate: formatDateForServer(dates.endDate)
+                });
+                
+                // Enviar actualización al servidor
+                updateTaskDatesInDB(taskBar);
+            }
+            
+            // Limpiar estado
+            draggedToNewMaquinaria = false;
+            
+            // Remover listeners globales
+            document.removeEventListener('mousemove', handleMouseMove);
+            document.removeEventListener('mouseup', handleMouseUp);
+        }
+
+        // EVENT LISTENER: Drag principal de la barra
         taskBar.addEventListener('mousedown', function(e) {
-            if (taskBar.getAttribute('data-activo') === "0") {
+            if (taskBar.getAttribute('data-activo') === "0") return;
+            
+            // No iniciar drag si se hace clic en un resizer
+            if (e.target.classList.contains('gantt-task-resizer-left') || 
+                e.target.classList.contains('gantt-task-resizer-right')) {
                 return;
             }
             
-            console.log('Iniciando arrastre de barra:', taskBar.getAttribute('data-task-id'));
+            console.log('🎯 INICIANDO DRAG de barra:', taskBar.getAttribute('data-task-id'));
+            
+            isDragging = true;
             taskBar.classList.add('dragging');
             
-            // Prevenir selección de texto
-            e.preventDefault();
+            initialMouseX = e.clientX;
+            initialMouseY = e.clientY;
+            initialLeft = parseInt(taskBar.style.left) || 0;
+            initialTop = parseInt(taskBar.style.top) || 0;
+            initialWidth = parseInt(taskBar.style.width) || 100;
             
-            // Configurar arrastre básico (se puede expandir más tarde)
-            document.addEventListener('mouseup', function handler() {
-                taskBar.classList.remove('dragging');
-                console.log('Arrastre terminado');
-                document.removeEventListener('mouseup', handler);
-            });
+            // Agregar listeners globales
+            document.addEventListener('mousemove', handleMouseMove);
+            document.addEventListener('mouseup', handleMouseUp);
+            
+            e.preventDefault();
+            e.stopPropagation();
         });
 
-        // Eventos para redimensionadores si existen
-        const resizers = taskBar.querySelectorAll('.gantt-task-resizer');
-        resizers.forEach(resizer => {
-            resizer.addEventListener('mousedown', function(e) {
-                e.stopPropagation(); // Evitar que se active el arrastre de la barra
-                console.log('Iniciando redimensionado');
+        // EVENT LISTENER: Resize izquierdo
+        const resizerLeft = taskBar.querySelector('.gantt-task-resizer-left');
+        if (resizerLeft) {
+            // Test básico: agregar evento de mouseenter para verificar que el elemento recibe eventos
+            resizerLeft.addEventListener('mouseenter', function(e) {
+                console.log('🟢 Mouse entró en resizer izquierdo');
+                resizerLeft.style.backgroundColor = 'rgba(0, 255, 0, 0.9)'; // Verde cuando funciona
             });
+            
+            resizerLeft.addEventListener('mouseleave', function(e) {
+                console.log('🔴 Mouse salió de resizer izquierdo');
+                resizerLeft.style.backgroundColor = 'rgba(255, 0, 0, 0.8)'; // Volver a rojo
+            });
+            
+            resizerLeft.addEventListener('mousedown', function(e) {
+                if (taskBar.getAttribute('data-activo') === "0") return;
+                
+                console.log('🎯 INICIANDO RESIZE IZQUIERDO de barra:', taskBar.getAttribute('data-task-id'));
+                
+                isResizing = true;
+                resizeType = 'left';
+                taskBar.classList.add('resizing');
+                
+                initialMouseX = e.clientX;
+                initialLeft = parseInt(taskBar.style.left) || 0;
+                initialWidth = parseInt(taskBar.style.width) || 100;
+                
+                // Agregar listeners globales
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+                
+                console.log('Resize izquierdo iniciado:', { initialLeft, initialWidth });
+                e.stopPropagation();
+                e.preventDefault();
+            });
+        }
+
+        // EVENT LISTENER: Resize derecho
+        const resizerRight = taskBar.querySelector('.gantt-task-resizer-right');
+        if (resizerRight) {
+            // Test básico: agregar evento de mouseenter para verificar que el elemento recibe eventos
+            resizerRight.addEventListener('mouseenter', function(e) {
+                console.log('🟢 Mouse entró en resizer derecho');
+                resizerRight.style.backgroundColor = 'rgba(0, 255, 0, 0.9)'; // Verde cuando funciona
+            });
+            
+            resizerRight.addEventListener('mouseleave', function(e) {
+                console.log('🔴 Mouse salió de resizer derecho');
+                resizerRight.style.backgroundColor = 'rgba(255, 0, 0, 0.8)'; // Volver a rojo
+            });
+            
+            resizerRight.addEventListener('mousedown', function(e) {
+                if (taskBar.getAttribute('data-activo') === "0") return;
+                
+                console.log('🎯 INICIANDO RESIZE DERECHO de barra:', taskBar.getAttribute('data-task-id'));
+                
+                isResizing = true;
+                resizeType = 'right';
+                taskBar.classList.add('resizing');
+                
+                initialMouseX = e.clientX;
+                initialLeft = parseInt(taskBar.style.left) || 0;
+                initialWidth = parseInt(taskBar.style.width) || 100;
+                
+                // Agregar listeners globales
+                document.addEventListener('mousemove', handleMouseMove);
+                document.addEventListener('mouseup', handleMouseUp);
+                
+                console.log('Resize derecho iniciado:', { initialLeft, initialWidth });
+                e.stopPropagation();
+                e.preventDefault();
+            });
+        }
+
+        // Debug: verificar que los redimensionadores existen
+        console.log('🔍 Configurando barra:', taskBar.getAttribute('data-task-id'), {
+            hasLeftResizer: !!resizerLeft,
+            hasRightResizer: !!resizerRight,
+            leftResizerElement: resizerLeft,
+            rightResizerElement: resizerRight,
+            taskBarChildren: Array.from(taskBar.children).map(child => child.className)
         });
     };
 
@@ -200,15 +593,26 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('Total maquinarias:', totalMaquinarias);
     console.log('=== FIN VERIFICACIÓN ===');
 
-    // Utilidades de fecha
+    // Utilidades de fecha - CORREGIDAS para evitar problemas de zona horaria
     function addDays(dateStr, days) {
-        const d = new Date(dateStr);
+        // Crear fecha usando el constructor año, mes-1, día para evitar problemas de zona horaria
+        const parts = dateStr.split('-');
+        const year = parseInt(parts[0]);
+        const month = parseInt(parts[1]) - 1; // Los meses en JavaScript van de 0-11
+        const day = parseInt(parts[2]);
+        
+        const d = new Date(year, month, day);
         d.setDate(d.getDate() + days);
         return d;
     }
+    
     function formatDate(date) {
-        return date.toISOString().slice(0,10);
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     }
+    
     function getDayOfWeek(date) {
         return date.getDay();
     }
@@ -265,6 +669,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const isFirstOfMonth = (currentDate.getDate() === 1);
                 const cell = document.createElement('div');
                 cell.className = 'gantt-grid-cell';
+                cell.dataset.date = formatDate(currentDate); // Agregar fecha para click detection
                 if (isWeekend) cell.classList.add('weekend');
                 if (isFirstOfMonth) cell.classList.add('first-of-month');
                 cell.style.width = '50px';
@@ -310,6 +715,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         const isFirstOfMonth = (currentDate.getDate() === 1);
                         const cell = document.createElement('div');
                         cell.className = 'gantt-grid-cell';
+                        cell.dataset.date = formatDate(currentDate); // Fecha para click detection
+                        cell.dataset.maquinariaId = maquinaria.id; // ID de maquinaria para pre-selección
                         if (isWeekend) cell.classList.add('weekend');
                         if (isFirstOfMonth) cell.classList.add('first-of-month');
                         cell.style.width = '50px';
@@ -359,84 +766,206 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Renderizar barras de tareas
     function renderTaskBars() {
-        // Elimina barras previas
-        const prevBars = ganttTimeline.querySelectorAll('.gantt-task-bar');
+        const ganttTimelineElement = document.getElementById('ganttTimeline');
+        if (!ganttTimelineElement) {
+            console.error('Error: No se encontró ganttTimeline');
+            return;
+        }
+        
+        // Eliminar barras previas
+        const prevBars = ganttTimelineElement.querySelectorAll('.gantt-task-bar');
         prevBars.forEach(bar => bar.remove());
+        
         const maquinariaPositions = JSON.parse(ganttGrid.dataset.maquinariaPositions || '{}');
-        tasks.forEach(task => {
-            if (!task.finicio || !task.ftermino) return;
-            const taskStartDate = new Date(task.finicio);
-            const taskEndDate = new Date(task.ftermino);
-            let effectiveStart = taskStartDate;
-            let effectiveEnd = taskEndDate;
-            const startDateObj = new Date(startDate);
-            const endDateObj = new Date(endDate);
-            if (effectiveStart < startDateObj) effectiveStart = startDateObj;
-            if (effectiveEnd > endDateObj) effectiveEnd = endDateObj;
+        
+        if (Object.keys(maquinariaPositions).length === 0) {
+            console.error('Error: No hay posiciones de maquinarias disponibles');
+            return;
+        }
+        
+        let tareasCreadas = 0;
+        
+        window.ganttData.tasks.forEach((task, index) => {
+            if (!task.finicio || !task.ftermino) {
+                return; // Saltamos tareas sin fechas
+            }
+            
+            // Usar el mismo método de creación de fechas para evitar problemas de zona horaria
+            const taskStartParts = task.finicio.split('-');
+            const taskStartDate = new Date(parseInt(taskStartParts[0]), parseInt(taskStartParts[1]) - 1, parseInt(taskStartParts[2]));
+            
+            const taskEndParts = task.ftermino.split('-');
+            const taskEndDate = new Date(parseInt(taskEndParts[0]), parseInt(taskEndParts[1]) - 1, parseInt(taskEndParts[2]));
+            
+            // Calcular posición y dimensiones usando el mismo método
+            const startParts = startDate.split('-');
+            const startDateObj = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+            
+            const endParts = endDate.split('-');
+            const endDateObj = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+            
+            let effectiveStart = taskStartDate < startDateObj ? startDateObj : taskStartDate;
+            let effectiveEnd = taskEndDate > endDateObj ? endDateObj : taskEndDate;
+            
             const taskStartDay = Math.floor((effectiveStart - startDateObj) / (1000*60*60*24));
             const taskEndDay = Math.floor((effectiveEnd - startDateObj) / (1000*60*60*24));
-            let leftPosition = (taskStartDay) * 50;
-            let width = (taskEndDay - taskStartDay + 1) * 50;
-            if (width < 25) width = 25;
-            const rowHeight = 60; // UNIFORM_HEIGHT
+            
+            let leftPosition = taskStartDay * 50;
+            let width = Math.max(25, (taskEndDay - taskStartDay + 1) * 50);
+            
+            // Calcular posición vertical
+            const maquinariaId = task.maquinaria_id;
+            if (!maquinariaPositions[maquinariaId]) {
+                return; // Saltamos tareas sin maquinaria válida
+            }
+            
+            const rowHeight = 60;
             const barHeight = 45;
-            let topPosition = 0;
-            if (task.maquinaria_id && maquinariaPositions[task.maquinaria_id]) {
-                // Centrar la barra en la fila de la maquinaria
-                topPosition = maquinariaPositions[task.maquinaria_id] + (rowHeight - barHeight) / 2;
-            }
-            let barColor = '#4a6cf7';
+            const topPosition = maquinariaPositions[maquinariaId] + (rowHeight - barHeight) / 2;
+            
+            // Determinar color por centro
+            let barColor = '#4a6cf7'; // Color por defecto
             if (task.maquinaria && task.maquinaria.centro) {
-                switch(task.maquinaria.centro.descripcion) {
-                    case 'PRENSA': barColor = '#ff6b6b'; break;
-                    case 'REVESTIMIENTO': barColor = '#4ecdc4'; break;
-                    case 'POLIURETANO': barColor = '#45b7d1'; break;
-                    case 'TRAFILA': barColor = '#96ceb4'; break;
-                    case 'ANILLOS': barColor = '#feca57'; break;
-                }
+                const centerColors = {
+                    'PRENSA': '#ff6b6b',
+                    'REVESTIMIENTO': '#4ecdc4',
+                    'POLIURETANO': '#45b7d1',
+                    'TRAFILA': '#96ceb4',
+                    'ANILLOS': '#feca57'
+                };
+                barColor = centerColors[task.maquinaria.centro.descripcion] || barColor;
             }
-            const bar = document.createElement('div');
-            bar.className = 'gantt-task-bar';
-            bar.setAttribute('data-task-id', task.id);
-            bar.setAttribute('data-start-date', formatDate(taskStartDate));
-            bar.setAttribute('data-end-date', formatDate(taskEndDate));
-            bar.setAttribute('data-maquinaria-id', task.maquinaria_id || '');
-            bar.setAttribute('data-activo', task.activo);
-            bar.style.left = leftPosition + 'px';
-            bar.style.width = width + 'px';
-            bar.style.top = topPosition + 'px';
-            bar.style.backgroundColor = barColor;
-            bar.style.position = 'absolute';
-            bar.style.height = barHeight + 'px';
-            bar.title = `OP ${task.op}-${task.linea} | ${(task.maquinaria && task.maquinaria.nombre) ? task.maquinaria.nombre : 'Sin maquinaria'} | ${formatDate(taskStartDate).slice(5)} - ${formatDate(taskEndDate).slice(5)}`;
-            // Contenido
-            const content = document.createElement('div');
-            content.className = 'gantt-task-content';
-            const label = document.createElement('span');
-            label.className = 'gantt-task-label';
-            label.textContent = `OP ${task.op}-${task.linea}`;
-            content.appendChild(label);
-            bar.appendChild(content);
-            if (task.activo) {
-                const resizerLeft = document.createElement('div');
-                resizerLeft.className = 'gantt-task-resizer gantt-task-resizer-left';
-                bar.appendChild(resizerLeft);
-                const resizerRight = document.createElement('div');
-                resizerRight.className = 'gantt-task-resizer gantt-task-resizer-right';
-                bar.appendChild(resizerRight);
-            }
-            ganttTimeline.appendChild(bar);
+            
+            // Crear barra de tarea
+            const bar = createTaskBar(task, leftPosition, width, topPosition, barHeight, barColor);
+            ganttTimelineElement.appendChild(bar);
+            
+            tareasCreadas++;
         });
         
-        // CRÍTICO: Configurar eventos de interactividad para las barras recién creadas
-        console.log('Configurando eventos de interactividad para barras...');
-        document.querySelectorAll('.gantt-task-bar').forEach(bar => {
+        console.log(`Creadas ${tareasCreadas} barras de tareas con funcionalidad de resize`);
+    }
+    
+    // Función auxiliar para crear una barra de tarea completa
+    function createTaskBar(task, leftPosition, width, topPosition, height, backgroundColor) {
+        const bar = document.createElement('div');
+        bar.className = 'gantt-task-bar';
+        
+        // Crear fechas usando el método consistente
+        const startParts = task.finicio.split('-');
+        const taskStartDate = new Date(parseInt(startParts[0]), parseInt(startParts[1]) - 1, parseInt(startParts[2]));
+        
+        const endParts = task.ftermino.split('-');
+        const taskEndDate = new Date(parseInt(endParts[0]), parseInt(endParts[1]) - 1, parseInt(endParts[2]));
+        
+        // Atributos de datos
+        bar.setAttribute('data-task-id', task.id);
+        bar.setAttribute('data-start-date', formatDate(taskStartDate));
+        bar.setAttribute('data-end-date', formatDate(taskEndDate));
+        bar.setAttribute('data-maquinaria-id', task.maquinaria_id || '');
+        bar.setAttribute('data-activo', task.activo);
+        bar.setAttribute('data-centro', task.maquinaria?.centro?.descripcion || '');
+        
+        // Estilos
+        bar.style.left = leftPosition + 'px';
+        bar.style.width = width + 'px';
+        bar.style.top = topPosition + 'px';
+        bar.style.height = height + 'px';
+        bar.style.backgroundColor = backgroundColor;
+        bar.style.position = 'absolute';
+        
+        // Tooltip usando las fechas ya calculadas correctamente
+        const maquinariaNombre = (task.maquinaria && task.maquinaria.nombre) ? task.maquinaria.nombre : 'Sin maquinaria';
+        const fechaInicio = formatDate(taskStartDate).slice(5);
+        const fechaTermino = formatDate(taskEndDate).slice(5);
+        bar.title = `OP ${task.op}-${task.linea} | ${maquinariaNombre} | ${fechaInicio} - ${fechaTermino}`;
+        
+        // Contenido
+        const content = document.createElement('div');
+        content.className = 'gantt-task-content';
+        const label = document.createElement('span');
+        label.className = 'gantt-task-label';
+        label.textContent = `OP ${task.op}-${task.linea}`;
+        content.appendChild(label);
+        bar.appendChild(content);
+        
+        // Crear resizers
+        createResizers(bar);
+        
+        return bar;
+    }
+    
+    // Función auxiliar para crear los elementos resizer
+    function createResizers(bar) {
+        // Resizer izquierdo
+        const resizerLeft = document.createElement('div');
+        resizerLeft.className = 'gantt-task-resizer-left';
+        addResizeEvents(resizerLeft, bar, 'left');
+        bar.appendChild(resizerLeft);
+        
+        // Resizer derecho
+        const resizerRight = document.createElement('div');
+        resizerRight.className = 'gantt-task-resizer-right';
+        addResizeEvents(resizerRight, bar, 'right');
+        bar.appendChild(resizerRight);
+    }
+    
+    // Función auxiliar para manejar eventos de resize
+    function addResizeEvents(resizer, bar, side) {
+        resizer.addEventListener('mousedown', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            
+            const startMouseX = e.clientX;
+            const startLeft = parseInt(bar.style.left) || 0;
+            const startWidth = parseInt(bar.style.width) || 100;
+            
+            const minWidth = 50; // Ancho mínimo de la barra
+            
+            function onMouseMove(moveEvent) {
+                const deltaX = moveEvent.clientX - startMouseX;
+                
+                if (side === 'left') {
+                    // Resize desde la izquierda
+                    const newLeft = startLeft + deltaX;
+                    const newWidth = startLeft + startWidth - newLeft;
+                    
+                    if (newWidth >= minWidth) {
+                        bar.style.left = newLeft + 'px';
+                        bar.style.width = newWidth + 'px';
+                    }
+                } else {
+                    // Resize desde la derecha
+                    const newWidth = startWidth + deltaX;
+                    
+                    if (newWidth >= minWidth) {
+                        bar.style.width = newWidth + 'px';
+                    }
+                }
+            }
+            
+            function onMouseUp() {
+                document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mouseup', onMouseUp);
+                
+                // Aquí se podría llamar a updateTaskInDatabase si es necesario
+                console.log(`Tarea ${bar.getAttribute('data-task-id')} redimensionada`);
+            }
+            
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        });
+    }
+        
+    // Configurar eventos de drag & drop para todas las barras después de renderizar
+    setTimeout(() => {
+        const allBars = document.querySelectorAll('.gantt-task-bar');
+        allBars.forEach((bar) => {
             if (window.setupTaskBarEvents) {
                 window.setupTaskBarEvents(bar);
             }
         });
-        console.log('Eventos de barras configurados');
-    }
+    }, 100);
 
     // FUNCIÓN PARA VERIFICAR ALINEACIÓN PERFECTA
     function ensurePerfectAlignment() {
@@ -606,9 +1135,41 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // INICIALIZACIÓN PRINCIPAL
     console.log('=== INICIANDO SISTEMA GANTT ===');
-    renderGrid();
-    renderTaskBars();
-    setDynamicHeights();
+    console.log('🎯 Datos disponibles:', window.ganttData);
+    console.log('🎯 Total tareas:', window.ganttData.tasks.length);
+    
+    try {
+        console.log('📊 Llamando renderGrid()...');
+        renderGrid();
+        console.log('✅ renderGrid() completado');
+        
+        console.log('📊 Llamando renderTaskBars()...');
+        renderTaskBars();
+        console.log('✅ renderTaskBars() completado');
+        
+        // TEST: Verificar si existen resizers después del renderizado
+        setTimeout(() => {
+            const allResizers = document.querySelectorAll('.gantt-task-resizer-left, .gantt-task-resizer-right');
+            console.log('🔍 RESIZERS ENCONTRADOS:', allResizers.length);
+            allResizers.forEach((resizer, index) => {
+                console.log(`Resizer ${index + 1}:`, resizer.className, resizer.style.cssText);
+            });
+            
+            if (allResizers.length === 0) {
+                console.error('❌ NO SE ENCONTRARON RESIZERS - PROBLEMA EN LA CREACIÓN');
+            } else {
+                console.log('✅ Resizers encontrados correctamente');
+            }
+        }, 100);
+        
+        console.log('📊 Llamando setDynamicHeights()...');
+        setDynamicHeights();
+        console.log('✅ setDynamicHeights() completado');
+        
+    } catch (error) {
+        console.error('❌ ERROR EN INICIALIZACIÓN:', error);
+        console.error('❌ Stack trace:', error.stack);
+    }
     
     // VERIFICAR ALINEACIÓN PERFECTA
     setTimeout(() => {
@@ -631,15 +1192,430 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         console.log('✅ Sistema de Gantt completamente inicializado');
     }, 500);
+    
+    // CONFIGURAR NAVEGACIÓN DE SEMESTRES
+    console.log('🧭 Configurando navegación de semestres...');
+    
+    const prevSemesterBtn = document.getElementById('prevSemester');
+    const nextSemesterBtn = document.getElementById('nextSemester');
+    const currentSemesterBtn = document.getElementById('currentSemesterBtn');
+    
+    console.log('🔍 Elementos de navegación encontrados:', {
+        prevSemesterBtn: !!prevSemesterBtn,
+        nextSemesterBtn: !!nextSemesterBtn,
+        currentSemesterBtn: !!currentSemesterBtn
+    });
+    
+    if (prevSemesterBtn) {
+        prevSemesterBtn.addEventListener('click', function() {
+            console.log('🔙 Navegando al semestre anterior');
+            navigateToSemester('prev');
+        });
+        console.log('✅ Event listener agregado a prevSemester');
+    } else {
+        console.error('❌ Botón prevSemester no encontrado');
+    }
+    
+    if (nextSemesterBtn) {
+        nextSemesterBtn.addEventListener('click', function() {
+            console.log('🔜 Navegando al semestre siguiente');
+            navigateToSemester('next');
+        });
+        console.log('✅ Event listener agregado a nextSemester');
+    } else {
+        console.error('❌ Botón nextSemester no encontrado');
+    }
+    
+    if (currentSemesterBtn) {
+        currentSemesterBtn.addEventListener('click', function() {
+            console.log('📅 Navegando al semestre actual');
+            navigateToCurrentSemester();
+        });
+        console.log('✅ Event listener agregado a currentSemester');
+    } else {
+        console.error('❌ Botón currentSemester no encontrado');
+    }
+    
+    // FUNCIÓN: Navegar a semestre anterior/siguiente
+    function navigateToSemester(direction) {
+        const currentUrl = new URL(window.location);
+        const params = new URLSearchParams(currentUrl.search);
+        
+        // Obtener semestre y año actuales desde los parámetros o datos del controlador
+        let currentSemester = parseInt(params.get('semester')) || {{ $currentSemester }};
+        let currentYear = parseInt(params.get('year')) || {{ $currentYear }};
+        
+        console.log('📅 Navegación actual:', {
+            currentSemester,
+            currentYear,
+            direction
+        });
+        
+        // Calcular nuevo semestre y año
+        if (direction === 'prev') {
+            if (currentSemester === 1) {
+                currentSemester = 2;
+                currentYear--;
+            } else {
+                currentSemester = 1;
+            }
+        } else if (direction === 'next') {
+            if (currentSemester === 2) {
+                currentSemester = 1;
+                currentYear++;
+            } else {
+                currentSemester = 2;
+            }
+        }
+        
+        console.log('📅 Nuevo destino:', {
+            semester: currentSemester,
+            year: currentYear
+        });
+        
+        // Actualizar parámetros URL usando el sistema del controller
+        params.set('semester', currentSemester);
+        params.set('year', currentYear);
+        
+        // Mantener búsqueda si existe
+        if (params.get('search_op')) {
+            // Mantener el search_op pero actualizar el semestre
+            console.log('🔍 Manteniendo búsqueda:', params.get('search_op'));
+        }
+        
+        // Navegar a la nueva URL
+        const newUrl = currentUrl.pathname + '?' + params.toString();
+        console.log('🚀 Navegando a:', newUrl);
+        window.location.href = newUrl;
+    }
+    
+    // FUNCIÓN: Navegar al semestre actual
+    function navigateToCurrentSemester() {
+        const currentUrl = new URL(window.location);
+        const params = new URLSearchParams(currentUrl.search);
+        
+        // Calcular semestre actual basado en la fecha de hoy
+        const today = new Date();
+        const currentMonth = today.getMonth() + 1; // getMonth() returns 0-11
+        const currentSemester = currentMonth <= 6 ? 1 : 2;
+        const currentYear = today.getFullYear();
+        
+        console.log('📅 Navegando al semestre actual:', {
+            currentMonth,
+            semester: currentSemester,
+            year: currentYear
+        });
+        
+        // Actualizar parámetros URL
+        params.set('semester', currentSemester);
+        params.set('year', currentYear);
+        
+        // Mantener búsqueda si existe
+        if (params.get('search_op')) {
+            console.log('🔍 Manteniendo búsqueda:', params.get('search_op'));
+        }
+        
+        // Navegar a la nueva URL
+        const newUrl = currentUrl.pathname + '?' + params.toString();
+        console.log('🚀 Navegando a semestre actual:', newUrl);
+        window.location.href = newUrl;
+    }
+    
+    // Configurar clicks en grid después de que se renderice
+    setTimeout(() => {
+        setupGridCellClicks();
+    }, 1000);
+});
+
+// =============================
+// FUNCIONES GLOBALES DEL MODAL
+// =============================
+
+function openNewTaskModal(clickedDate, maquinariaId = null) {
+    console.log('Abriendo modal para fecha:', clickedDate, 'Maquinaria ID:', maquinariaId);
+    
+    const modal = document.getElementById('newTaskModal');
+    const inicioInput = document.getElementById('taskFinicio');
+    const terminoInput = document.getElementById('taskFtermino');
+    const maquinariaSelect = document.getElementById('taskMaquinaria');
+    const selectedMachineInfo = document.getElementById('selectedMachineInfo');
+    const selectedMachineName = document.getElementById('selectedMachineName');
+    
+    // Pre-llenar fecha de inicio con la fecha clickeada
+    inicioInput.value = clickedDate;
+    
+    // Calcular fecha de término (una semana después por defecto)
+    const startDate = new Date(clickedDate);
+    const endDate = new Date(startDate);
+    endDate.setDate(startDate.getDate() + 7);
+    terminoInput.value = endDate.toISOString().split('T')[0];
+    
+    // Pre-seleccionar maquinaria si se proporcionó
+    if (maquinariaId && maquinariaSelect) {
+        maquinariaSelect.value = maquinariaId;
+        
+        // Mostrar información de la maquinaria seleccionada
+        const selectedOption = maquinariaSelect.options[maquinariaSelect.selectedIndex];
+        if (selectedOption && selectedOption.text !== 'Seleccionar maquinaria') {
+            selectedMachineName.textContent = selectedOption.text;
+            selectedMachineInfo.style.display = 'block';
+        }
+        
+        console.log('Maquinaria pre-seleccionada:', maquinariaId);
+    } else {
+        // Ocultar información si no hay maquinaria seleccionada
+        selectedMachineInfo.style.display = 'none';
+    }
+    
+    // Mostrar modal
+    modal.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    
+    // Enfocar el primer campo
+    setTimeout(() => {
+        document.getElementById('taskOp').focus();
+    }, 300);
+}
+
+function closeNewTaskModal() {
+    const modal = document.getElementById('newTaskModal');
+    const selectedMachineInfo = document.getElementById('selectedMachineInfo');
+    
+    modal.style.display = 'none';
+    document.body.style.overflow = '';
+    
+    // Limpiar formulario
+    document.getElementById('newTaskForm').reset();
+    
+    // Ocultar información de maquinaria seleccionada
+    if (selectedMachineInfo) {
+        selectedMachineInfo.style.display = 'none';
+    }
+}
+
+function submitNewTask(event) {
+    event.preventDefault();
+    
+    const form = document.getElementById('newTaskForm');
+    const formData = new FormData(form);
+    
+    // Mostrar loading en el botón
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    submitBtn.textContent = 'Creando...';
+    submitBtn.disabled = true;
+    
+    fetch('/compromops', {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'Accept': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // Cerrar modal
+            closeNewTaskModal();
+            
+            // Mostrar mensaje de éxito
+            showNotification('Tarea creada exitosamente', 'success');
+            
+            // Recargar la página para mostrar la nueva tarea
+            setTimeout(() => {
+                window.location.reload();
+            }, 1000);
+        } else {
+            throw new Error(data.message || 'Error al crear la tarea');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showNotification('Error al crear la tarea: ' + error.message, 'error');
+    })
+    .finally(() => {
+        // Restaurar botón
+        submitBtn.textContent = originalText;
+        submitBtn.disabled = false;
+    });
+    
+    return false;
+}
+
+function showNotification(message, type = 'info') {
+    // Crear elemento de notificación
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.textContent = message;
+    
+    // Estilos inline para la notificación
+    Object.assign(notification.style, {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        padding: '12px 20px',
+        borderRadius: '4px',
+        color: 'white',
+        fontSize: '14px',
+        zIndex: '10001',
+        maxWidth: '400px',
+        opacity: '0',
+        transform: 'translateX(100%)',
+        transition: 'all 0.3s ease'
+    });
+    
+    // Colores según tipo
+    switch (type) {
+        case 'success':
+            notification.style.backgroundColor = '#28a745';
+            break;
+        case 'error':
+            notification.style.backgroundColor = '#dc3545';
+            break;
+        default:
+            notification.style.backgroundColor = '#007bff';
+    }
+    
+    document.body.appendChild(notification);
+    
+    // Animación de entrada
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Remover después de 4 segundos
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, 4000);
+}
+
+// Función para detectar clicks en celdas del grid
+function setupGridCellClicks() {
+    console.log('Configurando clicks en celdas del grid...');
+    
+    const ganttBody = document.querySelector('.gantt-body');
+    if (!ganttBody) {
+        console.error('No se encontró .gantt-body');
+        return;
+    }
+    
+    ganttBody.addEventListener('click', function(e) {
+        console.log('Click detectado en:', e.target);
+        
+        // Verificar si el click fue en una celda vacía (no en una tarea)
+        if (e.target.classList.contains('gantt-grid-cell') || 
+            e.target.closest('.gantt-grid-cell')) {
+            
+            // Verificar que no sea un click en una tarea existente
+            if (e.target.closest('.task-bar')) {
+                console.log('Click en tarea existente, ignorando');
+                return;
+            }
+            
+            const cell = e.target.classList.contains('gantt-grid-cell') ? 
+                       e.target : e.target.closest('.gantt-grid-cell');
+            
+            // Obtener la fecha de la celda
+            const dateStr = cell.dataset.date;
+            // Obtener el ID de maquinaria de la celda
+            const maquinariaId = cell.dataset.maquinariaId;
+            
+            console.log('Fecha de celda:', dateStr, 'Maquinaria ID:', maquinariaId);
+            
+            if (dateStr) {
+                openNewTaskModal(dateStr, maquinariaId);
+            } else {
+                console.warn('No se encontró fecha en la celda');
+            }
+        }
+    });
+    
+    console.log('✅ Clicks en celdas configurados');
+}
+
+// Configurar eventos del modal cuando el DOM esté listo
+document.addEventListener('DOMContentLoaded', function() {
+    // Cerrar modal al hacer click fuera
+    if (document.getElementById('newTaskModal')) {
+        document.getElementById('newTaskModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeNewTaskModal();
+            }
+        });
+    }
+    
+    // Cerrar modal con ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeNewTaskModal();
+        }
+    });
+    
+    // Event listener para el select de maquinaria
+    const maquinariaSelect = document.getElementById('taskMaquinaria');
+    if (maquinariaSelect) {
+        maquinariaSelect.addEventListener('change', function() {
+            const selectedMachineInfo = document.getElementById('selectedMachineInfo');
+            const selectedMachineName = document.getElementById('selectedMachineName');
+            
+            if (this.value && this.selectedIndex > 0) {
+                selectedMachineName.textContent = this.options[this.selectedIndex].text;
+                selectedMachineInfo.style.display = 'block';
+            } else {
+                selectedMachineInfo.style.display = 'none';
+            }
+        });
+    }
 });
 </script>
                     
 <style>
-    /* Eliminar todos los scrolls excepto los de la grilla */
-    html, body {
-        overflow: hidden !important;
+    /* Controlar scrolls de manera específica */
+    html {
+        overflow: hidden;
+        height: 100vh;
+    }
+    
+    body {
+        overflow: visible; /* Permitir overflow vertical para ver el header completo */
         height: 100vh;
         max-height: 100vh;
+    }
+    
+    /* Asegurar que el container principal sea visible */
+    .gantt-container {
+        height: 100vh;
+        max-height: 100vh;
+        overflow: visible;
+        display: flex;
+        flex-direction: column;
+    }
+    
+    /* Header debe ser siempre visible */
+    .gantt-header {
+        flex: 0 0 auto !important;
+        z-index: 1000 !important;
+        position: relative !important;
+        display: flex !important;
+        visibility: visible !important;
+        opacity: 1 !important;
+    }
+    
+    /* Asegurar que los botones de navegación sean visibles y funcionales */
+    .gantt-nav-btn, 
+    .gantt-nav-btn-today {
+        visibility: visible !important;
+        opacity: 1 !important;
+        pointer-events: auto !important;
+        z-index: 1001 !important;
     }
     
     /* Eliminar scrollbars de todos los elementos por defecto */
@@ -1556,7 +2532,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     .gantt-grid-cell:hover {
-        background: #f8f9fa;
+        background-color: #f0f8ff !important;
+        cursor: pointer;
+        border: 1px solid #007bff;
+        transform: scale(1.02);
+        transition: all 0.2s ease;
+        z-index: 10;
+        position: relative;
+    }
+    
+    /* Hover especial para celdas con maquinaria */
+    .gantt-grid-cell[data-maquinaria-id]:hover::after {
+        content: "Crear tarea aquí";
+        position: absolute;
+        bottom: -25px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #007bff;
+        color: white;
+        padding: 3px 8px;
+        border-radius: 3px;
+        font-size: 11px;
+        white-space: nowrap;
+        z-index: 1000;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
     }
     
@@ -1610,17 +2609,26 @@ document.addEventListener('DOMContentLoaded', function() {
     
     .gantt-task-bar:hover {
         box-shadow: 0 6px 15px rgba(0,0,0,0.25);
-        border-color: #ffffff;
+        /* ELIMINADO: border-color que causaba problemas */
         /* Mantener sin transformaciones adicionales */
         transform: none;
     }
     
     .gantt-task-bar.dragging {
         opacity: 0.8;
-        transform: translateY(-50%) scale(1.05);
+        transform: scale(1.05);
         z-index: 1000;
         box-shadow: 0 8px 25px rgba(0,0,0,0.35);
-        cursor: grabbing;
+        cursor: grabbing !important;
+        transition: none !important; /* Deshabilitar transiciones durante el drag */
+    }
+    
+    .gantt-task-bar.resizing {
+        opacity: 0.9;
+        z-index: 999;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+        cursor: col-resize !important;
+        transition: none !important;
     }
     
     .gantt-task-bar[data-activo="0"] {
@@ -1665,6 +2673,48 @@ document.addEventListener('DOMContentLoaded', function() {
         50% { opacity: 0.7; }
         100% { opacity: 1; }
     }
+    
+    /* Mejoras adicionales para drag & drop */
+    .gantt-grid-cell.drag-target {
+        background-color: rgba(74, 108, 247, 0.1) !important;
+        border: 1px dashed rgba(74, 108, 247, 0.4) !important;
+        animation: dragTargetPulse 1s infinite;
+    }
+    
+    @keyframes dragTargetPulse {
+        0% { background-color: rgba(74, 108, 247, 0.1); }
+        50% { background-color: rgba(74, 108, 247, 0.2); }
+        100% { background-color: rgba(74, 108, 247, 0.1); }
+    }
+    
+    /* Indicador de posición durante el drag */
+    .drag-position-indicator {
+        position: fixed;
+        background: rgba(74, 108, 247, 0.9);
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: bold;
+        z-index: 1001;
+        pointer-events: none;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        transition: none;
+    }
+    
+    /* Mejorar la visibilidad del cursor durante drag y resize - Estas reglas se consolidaron arriba */
+    
+    /* TAMBIÉN COMENTADO - Estados de hover mejorados para los resizers
+    .gantt-task-resizer-left:hover {
+        background-color: rgba(255, 255, 255, 0.9) !important;
+        box-shadow: -2px 0 4px rgba(0,0,0,0.2);
+    }
+    
+    .gantt-task-resizer-right:hover {
+        background-color: rgba(255, 255, 255, 0.9) !important;
+        box-shadow: 2px 0 4px rgba(0,0,0,0.2);
+    }
+    */
     
     /* Indicador de día actual durante scroll */
     .current-day-indicator {
@@ -1753,22 +2803,43 @@ document.addEventListener('DOMContentLoaded', function() {
         text-shadow: 0 1px 2px rgba(0,0,0,0.2);
     }
     
-    /* Redimensionadores de tareas */
-    .gantt-task-resizer {
+    /* Resizers para redimensionar tareas */
+    .gantt-task-resizer-left,
+    .gantt-task-resizer-right {
         position: absolute;
         top: 0;
-        width: 8px; /* Aumentado */
-        height: 100%;
+        bottom: 0;
+        width: 8px;
         cursor: col-resize;
-        z-index: 11;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 60;
     }
     
     .gantt-task-resizer-left {
         left: 0;
+        border-top-left-radius: 4px;
+        border-bottom-left-radius: 4px;
     }
     
     .gantt-task-resizer-right {
         right: 0;
+        border-top-right-radius: 4px;
+        border-bottom-right-radius: 4px;
+    }
+    
+    /* Mostrar resizers al hacer hover sobre la tarea */
+    .gantt-task-bar:hover .gantt-task-resizer-left,
+    .gantt-task-bar:hover .gantt-task-resizer-right {
+        opacity: 0.7;
+    }
+    
+    /* Resaltar al hacer hover específico sobre el resizer */
+    .gantt-task-resizer-left:hover,
+    .gantt-task-resizer-right:hover {
+        opacity: 1 !important;
+        background-color: rgba(74, 108, 247, 0.9) !important;
     }
     
     /* Área para crear nuevas tareas */
@@ -2230,928 +3301,282 @@ document.addEventListener('DOMContentLoaded', function() {
     .gantt-timeline, .gantt-sidebar, .gantt-body, .gantt-chart-container {
         scroll-behavior: smooth;
     }
+    
+    /* Estilos del Modal */
+    .gantt-modal {
+        display: none;
+        position: fixed;
+        z-index: 10000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0, 0, 0, 0.5);
+        backdrop-filter: blur(2px);
+    }
+    
+    .gantt-modal-content {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        background-color: white;
+        border-radius: 8px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        width: 90%;
+        max-width: 600px;
+        max-height: 90vh;
+        overflow-y: auto;
+        animation: modalSlideIn 0.3s ease-out;
+    }
+    
+    @keyframes modalSlideIn {
+        from {
+            opacity: 0;
+            transform: translate(-50%, -60%);
+        }
+        to {
+            opacity: 1;
+            transform: translate(-50%, -50%);
+        }
+    }
+    
+    .gantt-modal-header {
+        padding: 20px;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #f8f9fa;
+        border-radius: 8px 8px 0 0;
+    }
+    
+    .gantt-modal-header h3 {
+        margin: 0;
+        color: #333;
+        font-size: 1.3em;
+    }
+    
+    .selected-machine-info {
+        margin-top: 5px;
+        padding: 5px 10px;
+        background-color: #e3f2fd;
+        border-radius: 4px;
+        border-left: 3px solid #2196f3;
+    }
+    
+    .selected-machine-info .text-muted {
+        color: #666 !important;
+        font-size: 0.9em;
+    }
+    
+    .selected-machine-info i {
+        color: #2196f3;
+        margin-right: 5px;
+    }
+    
+    .gantt-modal-close {
+        background: none;
+        border: none;
+        font-size: 24px;
+        cursor: pointer;
+        color: #666;
+        width: 30px;
+        height: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+        transition: all 0.2s;
+    }
+    
+    .gantt-modal-close:hover {
+        background-color: #e9ecef;
+        color: #333;
+    }
+    
+    .gantt-modal-body {
+        padding: 20px;
+    }
+    
+    .form-row {
+        display: flex;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .form-row .form-group {
+        flex: 1;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    .form-group label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: 500;
+        color: #333;
+    }
+    
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        width: 100%;
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 14px;
+        transition: border-color 0.2s;
+    }
+    
+    .form-group input:focus,
+    .form-group select:focus,
+    .form-group textarea:focus {
+        outline: none;
+        border-color: #007bff;
+        box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.1);
+    }
+    
+    .gantt-modal-footer {
+        padding: 15px 20px;
+        border-top: 1px solid #eee;
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+        background-color: #f8f9fa;
+        border-radius: 0 0 8px 8px;
+    }
+    
+    .btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 14px;
+        transition: all 0.2s;
+    }
+    
+    .btn-secondary {
+        background-color: #6c757d;
+        color: white;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #5a6268;
+    }
+    
+    .btn-primary {
+        background-color: #007bff;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    
+    /* Responsive */
+    @media (max-width: 768px) {
+        .gantt-modal-content {
+            width: 95%;
+            margin: 20px;
+        }
+        
+        .form-row {
+            flex-direction: column;
+            gap: 0;
+        }
+        
+        .gantt-modal-footer {
+            flex-direction: column-reverse;
+        }
+        
+        .gantt-modal-footer .btn {
+            width: 100%;
+        }
+    }
 </style>
-<!--
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    const prevSemesterBtn = document.getElementById('prevSemester');
-    const nextSemesterBtn = document.getElementById('nextSemester');
-    const currentSemesterDisplay = document.getElementById('currentSemesterDisplay');
-    const ganttTimeline = document.getElementById('ganttTimeline');
-    
-    // Función para colapsar/expandir grupos de centros
-    function toggleCentroGroup(centroId) {
-        const maquinariasContainer = document.getElementById(`centro-maquinarias-${centroId}`);
-        const toggleIcon = document.querySelector(`[data-centro-id="${centroId}"] .gantt-centro-toggle`);
-        if (maquinariasContainer.classList.contains('collapsed')) {
-            // Expandir
-            maquinariasContainer.classList.remove('collapsed');
-            maquinariasContainer.style.maxHeight = maquinariasContainer.scrollHeight + 'px';
-            toggleIcon.classList.remove('collapsed');
-        } else {
-            // Colapsar
-            maquinariasContainer.style.maxHeight = maquinariasContainer.scrollHeight + 'px';
-            // Forzar reflow
-            maquinariasContainer.offsetHeight;
-            maquinariasContainer.style.maxHeight = '0px';
-            maquinariasContainer.classList.add('collapsed');
-            toggleIcon.classList.add('collapsed');
-        }
-        
-        // CRÍTICO: Re-sincronizar la grilla después del colapso/expansión
-        setTimeout(() => {
-            syncCollapseWithGrid(); // Esto re-renderiza la grilla completa
-            setDynamicHeights(); // Ajustar alturas dinámicas
-            
-            // Re-configurar scroll después de cambios en la estructura
-            if (window.ganttScrollConfigured) {
-                console.log('Re-configurando scroll después de toggle...');
-                // El scroll ya está configurado, solo necesitamos asegurar que funcione
-            }
-        }, 350); // Esperar a que termine la animación
-    }
-    
-    // FUNCIÓN ELIMINADA: adjustDynamicHeights() - Ya no es necesaria
-    // Usamos setDynamicHeights() que es más precisa
-    }
-    
-    // FUNCIÓN DESACTIVADA: Sistema de scroll ya configurado en el primer script
-    function syncHeaderScroll() {
-        console.log('syncHeaderScroll DESACTIVADO - usando sistema unificado del primer script');
-        // Esta función ya no es necesaria porque el scroll se maneja en syncScroll()
-    }
-    
-    // Función para actualizar las posiciones de las barras de tareas
-    // FUNCIÓN SIMPLIFICADA: Solo actualizar posiciones - OBSOLETA
-    // Ya no es necesaria porque renderTaskBars() maneja todo automáticamente
-    function updateTaskPositions() {
-        // Esta función ahora solo re-renderiza las barras
-        renderTaskBars();
-        console.log('Posiciones de tareas actualizadas via re-renderizado');
-    }
-    
-    // Hacer la función global para poder usarla desde el HTML
-    window.toggleCentroGroup = toggleCentroGroup;
-    
-    // Inicializar scroll simple - solo header horizontal
-    syncHeaderScroll();
-    
-    // Ajustar alturas iniciales
-    adjustDynamicHeights();
-    const timelineHeader = document.querySelector('.gantt-timeline-header');
-    const timelineContent = document.querySelector('.gantt-timeline');
-    const ganttBody = document.querySelector('.gantt-body');
-    
-    if (timelineHeader && timelineContent && ganttBody) {
-        console.log('✅ Elementos encontrados para scroll:');
-        console.log('- Timeline Header:', timelineHeader);
-        console.log('- Timeline Content:', timelineContent);
-        console.log('- Gantt Body:', ganttBody);
-        
-        // Variable para evitar loops infinitos
-        let isScrolling = false;
-        
-        // Función para calcular y mostrar el día preciso durante el scroll
-        function calculateCurrentDay(scrollLeft) {
-            const dayColumns = document.querySelectorAll('.gantt-day-column');
-            const dayWidth = dayColumns.length > 0 ? dayColumns[0].offsetWidth : 50;
-            
-            // Calcular el día actual basado en la posición del scroll
-            const currentDayIndex = Math.floor(scrollLeft / dayWidth);
-            const dayOffset = (scrollLeft % dayWidth) / dayWidth;
-            
-            if (dayColumns[currentDayIndex]) {
-                const dayElement = dayColumns[currentDayIndex];
-                const dayNumber = dayElement.querySelector('.gantt-day-number')?.textContent;
-                const dayName = dayElement.querySelector('.gantt-day-name')?.textContent;
-                
-                // Remover indicador anterior
-                document.querySelectorAll('.current-day-indicator').forEach(el => el.remove());
-                
-                // Crear indicador de día actual
-                const indicator = document.createElement('div');
-                indicator.className = 'current-day-indicator';
-                indicator.style.cssText = `
-                    position: absolute;
-                    left: ${scrollLeft}px;
-                    top: 0;
-                    width: 2px;
-                    height: 100%;
-                    background-color: #ff4757;
-                    z-index: 1000;
-                    pointer-events: none;
-                `;
-                
-                const timeline = document.querySelector('.gantt-timeline');
-                if (timeline) {
-                    timeline.appendChild(indicator);
-                }
-                
-                // Mostrar información del día actual en la consola para depuración
-                console.log(`📅 Día actual: ${dayNumber} ${dayName} (Índice: ${currentDayIndex}, Offset: ${(dayOffset * 100).toFixed(1)}%)`);
-                
-                // Opcional: Actualizar algún indicador visual
-                updateDayIndicator(currentDayIndex, dayNumber, dayName, dayOffset);
-            }
-        }
-        
-        // Función para actualizar indicador visual del día actual
-        function updateDayIndicator(dayIndex, dayNumber, dayName, offset) {
-            // Remover indicador anterior
-            const prevIndicator = document.querySelector('.current-day-indicator');
-            if (prevIndicator) {
-                prevIndicator.remove();
-            }
-            
-            // Crear nuevo indicador
-            const indicator = document.createElement('div');
-            indicator.className = 'current-day-indicator';
-            indicator.innerHTML = `
-                <div class="day-info">
-                    <span class="day-num">${dayNumber}</span>
-                    <span class="day-label">${dayName}</span>
-                    <span class="day-progress">${(offset * 100).toFixed(0)}%</span>
+
+<!-- Modal para crear nueva tarea -->
+<div id="newTaskModal" class="gantt-modal">
+    <div class="gantt-modal-content">
+        <div class="gantt-modal-header">
+            <div>
+                <h3>Crear Nueva Tarea</h3>
+                <div id="selectedMachineInfo" class="selected-machine-info" style="display: none;">
+                    <small class="text-muted">
+                        <i class="fas fa-cog"></i> Maquinaria seleccionada: <span id="selectedMachineName"></span>
+                    </small>
                 </div>
-            `;
-            
-            // Posicionar el indicador
-            const timelineHeader = document.querySelector('.gantt-timeline-header');
-            if (timelineHeader) {
-                timelineHeader.appendChild(indicator);
-                indicator.style.position = 'fixed';
-                indicator.style.top = '10px';
-                indicator.style.right = '20px';
-                indicator.style.background = 'rgba(74, 108, 247, 0.9)';
-                indicator.style.color = 'white';
-                indicator.style.padding = '8px 12px';
-                indicator.style.borderRadius = '6px';
-                indicator.style.fontSize = '12px';
-                indicator.style.zIndex = '300';
-                indicator.style.boxShadow = '0 2px 8px rgba(0,0,0,0.2)';
-            }
-        }
+            </div>
+            <button type="button" class="gantt-modal-close" onclick="closeNewTaskModal()">&times;</button>
+        </div>
         
-        // Función para sincronizar el scroll vertical (sidebar -> grid) - ELIMINADA - no necesaria
-        // Función para sincronizar el scroll horizontal (solo header) - ELIMINADA - simplificada
-        
-        // Inicializar posiciones originales de las barras de tareas
-        document.querySelectorAll('.gantt-task-bar').forEach(taskBar => {
-            if (!taskBar.getAttribute('data-original-top')) {
-                taskBar.setAttribute('data-original-top', taskBar.style.top);
-            }
-        });
-    } else {
-        console.error('❌ No se pudieron encontrar los elementos para scroll:', {
-            timelineHeader: !!timelineHeader,
-            timelineContent: !!timelineContent,
-            ganttBody: !!ganttBody
-        });
-    }
-    
-    // Función para optimizar el comportamiento sticky (inspirada en tu código)
-    function optimizeStickyElements() {
-        const ganttContainer = document.querySelector('.gantt-chart-container');
-        const sidebar = document.querySelector('.gantt-sidebar');
-        const sidebarHeader = document.querySelector('.gantt-sidebar-header');
-        const daysHeader = document.querySelector('.gantt-days-header');
-        
-        if (ganttContainer && sidebar && sidebarHeader && daysHeader) {
-            // Forzar posicionamiento sticky en elementos críticos
-            sidebar.style.position = 'sticky';
-            sidebar.style.left = '0';
-            sidebar.style.zIndex = '270';
-            sidebar.style.background = '#f8f9fa';
-            
-            sidebarHeader.style.position = 'sticky';
-            sidebarHeader.style.left = '0';
-            sidebarHeader.style.top = '0';
-            sidebarHeader.style.zIndex = '290';
-            
-            daysHeader.style.position = 'sticky';
-            daysHeader.style.top = '0';
-            daysHeader.style.zIndex = '280';
-            daysHeader.style.background = '#ffffff';
-            
-            console.log('Elementos sticky optimizados');
-        }
-    }
-    
-    // Función para asegurar dimensiones correctas del scroll
-    function ensureScrollDimensions() {
-        const timelineContent = document.querySelector('.gantt-timeline');
-        const timelineHeader = document.querySelector('.gantt-timeline-header');
-        const ganttGrid = document.querySelector('.gantt-grid');
-        
-        if (timelineContent && timelineHeader) {
-            const totalDays = {{ $totalDays }};
-            const dayWidth = 50; // 50px por día
-            const totalWidth = totalDays * dayWidth;
-            
-            // Forzar el ancho mínimo en todos los elementos
-            timelineHeader.style.minWidth = totalWidth + 'px';
-            
-            if (ganttGrid) {
-                ganttGrid.style.minWidth = totalWidth + 'px';
-                ganttGrid.style.width = totalWidth + 'px';
-            }
-            
-            // Asegurar que todas las filas del grid tengan el ancho correcto
-            const gridRows = document.querySelectorAll('.gantt-grid-row');
-            gridRows.forEach(row => {
-                row.style.minWidth = totalWidth + 'px';
-                row.style.width = totalWidth + 'px';
-            });
-        }
-    }
-    
-    // Ejecutar optimizaciones al cargar la página
-    optimizeStickyElements();
-    ensureScrollDimensions();
-    updateTaskPositions(); // <-- Forzar posiciones correctas al cargar
-
-    // Ejecutar la función cuando se redimensione la ventana
-    window.addEventListener('resize', function() {
-        optimizeStickyElements();
-        ensureScrollDimensions();
-        updateTaskPositions(); // <-- Forzar posiciones correctas al redimensionar
-    });
-
-    // Ejecutar la función después de que el DOM esté completamente cargado
-    setTimeout(() => {
-        optimizeStickyElements();
-        ensureScrollDimensions();
-        updateTaskPositions(); // <-- Forzar posiciones correctas tras timeout
-    }, 100);
-    
-    // Variables para seguimiento de semestres
-    let currentSemester = {{ $currentSemester }};
-    let currentYear = {{ $currentYear }};
-    let totalDays = {{ $totalDays }};
-    
-    // El mapeo de posiciones de maquinaria se hace solo en JS dinámicamente con updateTaskPositions()
-    
-    // Declarar las variables faltantes
-    let draggingTask = null;
-    let resizing = null;
-    let initialX = 0;
-    let initialY = 0;
-    let initialLeft = 0;
-    let initialTop = 0;
-    let initialWidth = 0;
-    let draggedToNewMaquinaria = false;
-    
-    // Función de formato de fecha
-    function formatDate(date) {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    }
-    
-    // Eventos para las tareas existentes
-    document.querySelectorAll('.gantt-task-bar').forEach(setupTaskBarEvents);
-    
-    function setupTaskBarEvents(taskBar) {
-        // Verificar si la tarea está inactiva
-        if (taskBar.getAttribute('data-activo') === "0") {
-            return;
-        }
-
-        taskBar.addEventListener('mousedown', function(e) {
-            if (taskBar.getAttribute('data-activo') === "0") {
-                return;
-            }
-            
-            if (taskBar.querySelector('.gantt-confirm-action')) return;
-            draggingTask = null;
-            resizing = null;
-            draggedToNewMaquinaria = false;
-
-            if (e.target.classList.contains('gantt-task-resizer')) {
-                // Iniciar redimensionamiento
-                resizing = {
-                    task: this,
-                    isLeft: e.target.classList.contains('gantt-task-resizer-left')
-                };
-                initialX = e.clientX;
-                initialLeft = parseFloat(this.style.left);
-                initialWidth = parseFloat(this.style.width);
-            } else {
-                // Determinar tipo de drag: Shift = solo horizontal, Alt = solo vertical, normal = ambos
-                const horizontalOnly = e.shiftKey;
-                const verticalOnly = e.altKey;
-                
-                // Configurar tipo de drag
-                this.setAttribute('data-drag-mode', horizontalOnly ? 'horizontal' : (verticalOnly ? 'vertical' : 'both'));
-                
-                // Añadir clase de drag
-                this.classList.add('dragging');
-                
-                // Iniciar arrastre
-                draggingTask = this;
-                
-                // Forzar left y width a porcentaje si no lo están
-                if (!this.style.left || this.style.left.indexOf('%') === -1) {
-                    let leftPx = this.offsetLeft;
-                    let parentW = this.parentElement ? this.parentElement.offsetWidth : 1;
-                    let leftPct = (leftPx / parentW) * 100;
-                    this.style.left = leftPct + '%';
-                }
-                if (!this.style.width || this.style.width.indexOf('%') === -1) {
-                    let widthPx = this.offsetWidth;
-                    let parentW = this.parentElement ? this.parentElement.offsetWidth : 1;
-                    let widthPct = (widthPx / parentW) * 100;
-                    this.style.width = widthPct + '%';
-                }
-                
-                // Guardar maquinaria original
-                draggingTask.setAttribute('data-original-maquinaria-id', draggingTask.getAttribute('data-maquinaria-id'));
-                
-                // Guardar el ancho original de la barra al iniciar el drag
-                let barWidth = parseFloat(this.style.width);
-                if (isNaN(barWidth) || barWidth <= 0) {
-                    if (this.parentElement && this.parentElement.offsetWidth) {
-                        barWidth = (this.offsetWidth / this.parentElement.offsetWidth) * 100;
-                    } else {
-                        barWidth = 10;
-                    }
-                }
-                draggingTask.setAttribute('data-original-width', barWidth);
-                
-                // Calcular el offset del mouse dentro de la barra (en % del contenedor)
-                let parentW = this.parentElement ? this.parentElement.offsetWidth : 1;
-                let mouseOffsetPx = e.clientX - this.getBoundingClientRect().left;
-                let mouseOffsetPct = (mouseOffsetPx / parentW) * 100;
-                draggingTask.setAttribute('data-mouse-offset', mouseOffsetPct);
-                
-                initialX = e.clientX;
-                initialLeft = parseFloat(this.style.left);
-                
-                // Guardar el top original
-                draggingTask.setAttribute('data-original-top-px', this.style.top);
-                
-                // Guardar posición Y inicial para modo horizontal
-                draggingTask.setAttribute('data-original-mouse-y', e.clientY);
-                
-                // Calcular offset vertical entre el mouse y el centro visual de la barra
-                let barRect = this.getBoundingClientRect();
-                const rowHeight = 60; // GRID_ROW_HEIGHT
-                const barHeight = barRect.height;
-                let offsetY = e.clientY - (barRect.top + barHeight / 2);
-                if (rowHeight > barHeight) {
-                    offsetY -= (rowHeight - barHeight);
-                }
-                draggingTask.setAttribute('data-mouse-offset-y', offsetY);
-            }
-            e.preventDefault();
-        });
-    }
-    
-    document.addEventListener('mousemove', function(e) {
-        if (!draggingTask && !resizing) return;
-
-        const pendingConfirmations = document.querySelectorAll('.gantt-confirm-action');
-        if (pendingConfirmations.length > 0) {
-            draggingTask = null;
-            resizing = null;
-            return;
-        }
-
-        if (draggingTask) {
-            const dragMode = draggingTask.getAttribute('data-drag-mode') || 'both';
-            
-            // Calcular nueva posición horizontal
-            let newLeft = null;
-            if (dragMode === 'horizontal' || dragMode === 'both') {
-                const timelineWidth = ganttTimeline.clientWidth;
-                let barWidth = parseFloat(draggingTask.getAttribute('data-original-width'));
-                if (isNaN(barWidth) || barWidth <= 0) {
-                    barWidth = 10;
-                }
-                
-                // Offset del mouse dentro de la barra (en % del contenedor)
-                let mouseOffsetPct = parseFloat(draggingTask.getAttribute('data-mouse-offset'));
-                if (isNaN(mouseOffsetPct)) mouseOffsetPct = 0;
-                
-                // Calcular el left para que el mouse quede donde se agarró la barra
-                let parentW = draggingTask.parentElement ? draggingTask.parentElement.offsetWidth : timelineWidth;
-                let mouseX = e.clientX - draggingTask.parentElement.getBoundingClientRect().left;
-                newLeft = (mouseX - (mouseOffsetPct / 100) * parentW) / parentW * 100;
-                newLeft = Math.max(0, Math.min(100 - barWidth, newLeft));
-                
-                // Aplicar nueva posición horizontal
-                draggingTask.style.left = newLeft + '%';
-                
-                // Actualizar fechas solo en modo horizontal o both
-                updateTaskDates(draggingTask, barWidth);
-            }
-            
-            // Calcular nueva posición vertical
-            if (dragMode === 'vertical' || dragMode === 'both') {
-                // Detectar la fila (maquinaria) bajo el mouse
-                let targetRow = null;
-                let targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
-                const rows = Array.from(document.querySelectorAll('.gantt-grid-row'));
-                
-                for (let row of rows) {
-                    const rect = row.getBoundingClientRect();
-                    if (e.clientY >= rect.top && e.clientY <= rect.bottom) {
-                        targetRow = row;
-                        targetMaquinariaId = row.getAttribute('data-maquinaria-id');
-                        break;
-                    }
-                }
-                
-                // Calcular nueva posición vertical
-                let newTop = null;
-                if (targetRow) {
-                    const rowRect = targetRow.getBoundingClientRect();
-                    const gridRect = targetRow.parentElement.getBoundingClientRect();
-                    // Centro de la fila relativo al contenedor de la grilla
-                    const rowCenter = (rowRect.top + rowRect.bottom) / 2 - gridRect.top;
-                    newTop = rowCenter;
-                    
-                    // Cambio visual para indicar nueva fila
-                    draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
-                    draggingTask.style.backgroundColor = '#ff9800';
-                    draggingTask.style.opacity = '0.8';
-                } else {
-                    // Mantener fila original
-                    targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
-                    draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
-                    draggingTask.style.backgroundColor = '';
-                    draggingTask.style.opacity = '1';
-                    
-                    // Restaurar posición original
-                    let origTop = draggingTask.getAttribute('data-original-top-px');
-                    if (origTop !== null && origTop !== undefined) {
-                        newTop = parseFloat(origTop);
-                    }
-                }
-                
-                if (newTop !== null) {
-                    draggingTask.style.top = newTop + 'px';
-                    draggingTask.style.transform = 'translateY(-50%)';
-                }
-            }
-            
-            // En modo solo horizontal, mantener la fila original
-            if (dragMode === 'horizontal') {
-                let origTop = draggingTask.getAttribute('data-original-top-px');
-                if (origTop !== null && origTop !== undefined) {
-                    draggingTask.style.top = origTop;
-                    draggingTask.style.transform = 'translateY(-50%)';
-                }
-                
-                // Restaurar color y opacidad originales
-                draggingTask.style.backgroundColor = '';
-                draggingTask.style.opacity = '1';
-            }
-        } else if (resizing) {
-            // Solo modificar el ancho, no la posición horizontal salvo que sea resize izquierdo
-            const dx = e.clientX - initialX;
-            const timelineWidth = ganttTimeline.clientWidth;
-            const percentageMoved = (dx / timelineWidth) * 100;
-            const minWidth = 100 / totalDays; // Un día mínimo
-            if (resizing.isLeft) {
-                let newLeft = initialLeft + percentageMoved;
-                let newWidth = initialWidth - percentageMoved;
-                // Limitar para que no se salga del grid ni desaparezca
-                if (newLeft < 0) {
-                    newWidth += newLeft; // Resta lo que se salió
-                    newLeft = 0;
-                }
-                newWidth = Math.max(minWidth, newWidth);
-                if (newLeft + newWidth > 100) {
-                    newWidth = 100 - newLeft;
-                }
-                resizing.task.style.left = newLeft + '%';
-                resizing.task.style.width = newWidth + '%';
-                updateTaskDates(resizing.task);
-            } else {
-                let newWidth = initialWidth + percentageMoved;
-                newWidth = Math.max(minWidth, Math.min(100 - initialLeft, newWidth));
-                resizing.task.style.width = newWidth + '%';
-                updateTaskDates(resizing.task);
-            }
-        }
-    });
-    
-    document.addEventListener('mouseup', function(e) {
-        if (draggingTask) {
-            const dragMode = draggingTask.getAttribute('data-drag-mode') || 'both';
-            
-            // Solo procesar cambio de fila si no es modo horizontal puro
-            if (dragMode !== 'horizontal') {
-                // Detectar la fila real bajo el mouse al soltar, solo contando filas de maquinaria reales
-                let targetRow = null;
-                let targetMaquinariaId = draggingTask.getAttribute('data-original-maquinaria-id');
-                // Solo filas de maquinaria visibles
-                const rows = Array.from(document.querySelectorAll('.gantt-maquinaria-row')).filter(row => row.offsetParent !== null);
-                const mouseY = e.clientY;
-                
-                for (let row of rows) {
-                    const rect = row.getBoundingClientRect();
-                    if (mouseY >= rect.top && mouseY <= rect.bottom) {
-                        targetRow = row;
-                        targetMaquinariaId = row.getAttribute('data-maquinaria-id');
-                        break;
-                    }
-                }
-                
-                // Asignar la maquinaria y centrar la barra en la fila
-                if (targetRow && typeof window.maquinariaPositions !== 'undefined' && window.maquinariaPositions[targetMaquinariaId] !== undefined) {
-                    draggingTask.setAttribute('data-maquinaria-id', targetMaquinariaId);
-                    // Centrar perfectamente la barra en la fila
-                    const rowHeight = targetRow.offsetHeight || 60;
-                    const barHeight = draggingTask.offsetHeight;
-                    const offset = (rowHeight - barHeight) / 2;
-                    draggingTask.style.top = (window.maquinariaPositions[targetMaquinariaId] + offset) + 'px';
-                    draggingTask.style.transform = '';
-                } else {
-                    // Restaurar maquinaria original si no hay destino válido
-                    const originalMaquinaria = draggingTask.getAttribute('data-original-maquinaria-id');
-                    draggingTask.setAttribute('data-maquinaria-id', originalMaquinaria);
-                    
-                    // Restaurar posición vertical original
-                    let origTop = draggingTask.getAttribute('data-original-top-px');
-                    if (origTop !== null && origTop !== undefined) {
-                        draggingTask.style.top = origTop;
-                        draggingTask.style.transform = 'translateY(-50%)';
-                    }
-                }
-            } else {
-                // En modo horizontal, mantener maquinaria original
-                const originalMaquinaria = draggingTask.getAttribute('data-original-maquinaria-id');
-                draggingTask.setAttribute('data-maquinaria-id', originalMaquinaria);
-                
-                // Restaurar posición vertical original
-                let origTop = draggingTask.getAttribute('data-original-top-px');
-                if (origTop !== null && origTop !== undefined) {
-                    draggingTask.style.top = origTop;
-                    draggingTask.style.transform = 'translateY(-50%)';
-                }
-            }
-            
-            // Limpiar estilos de drag
-            draggingTask.style.opacity = '1';
-            draggingTask.style.backgroundColor = '';
-            draggingTask.classList.remove('dragging');
-            
-            // Restaurar el ancho original al terminar el drag
-            let barWidth = parseFloat(draggingTask.getAttribute('data-original-width'));
-            if (!isNaN(barWidth) && barWidth > 0) {
-                draggingTask.style.width = barWidth + '%';
-            }
-            
-            // Actualizar fechas y guardar en BD
-            updateTaskDates(draggingTask, barWidth);
-            updateTaskDatesInDB(draggingTask);
-            
-            // Limpiar atributos temporales
-            draggingTask.removeAttribute('data-original-width');
-            draggingTask.removeAttribute('data-drag-mode');
-            draggingTask.removeAttribute('data-mouse-offset');
-            draggingTask.removeAttribute('data-original-top-px');
-            draggingTask.removeAttribute('data-original-mouse-y');
-            draggingTask.removeAttribute('data-mouse-offset-y');
-            draggingTask.removeAttribute('data-original-maquinaria-id');
-            
-            draggingTask = null;
-        }
-        
-        if (resizing) {
-            updateTaskDates(resizing.task);
-            updateTaskDatesInDB(resizing.task);
-            resizing = null;
-        }
-        
-        draggedToNewMaquinaria = false;
-    });
-    
-    function updateTaskDates(taskBar, forcedWidth = null) {
-        // Obtener left y width de forma robusta
-        let left = parseFloat(taskBar.style.left);
-        let width = forcedWidth !== null ? forcedWidth : parseFloat(taskBar.style.width);
-        if (isNaN(left)) left = 0;
-        if (isNaN(width) || width <= 0) {
-            if (taskBar.parentElement && taskBar.parentElement.offsetWidth) {
-                width = (taskBar.offsetWidth / taskBar.parentElement.offsetWidth) * 100;
-            } else {
-                width = 100 / totalDays;
-            }
-        }
-        width = Math.max(width, 100 / totalDays);
-
-        // Calcular días desde el inicio del semestre
-        const startDay = Math.max(1, Math.ceil(left / 100 * totalDays));
-        const endDay = Math.min(totalDays, Math.floor((left + width) / 100 * totalDays));
-
-        // Crear fechas basadas en el semestre
-        const semesterStart = new Date(currentYear, (currentSemester - 1) * 6, 1);
-        const startDate = new Date(semesterStart);
-        startDate.setDate(startDate.getDate() + startDay - 1);
-
-        const endDate = new Date(semesterStart);
-        endDate.setDate(endDate.getDate() + endDay - 1);
-
-        // Formatear fechas para mostrar
-        const startFormatted = `${startDate.getDate()}/${startDate.getMonth() + 1}`;
-        const endFormatted = `${endDate.getDate()}/${endDate.getMonth() + 1}`;
-
-        const datesSpan = taskBar.querySelector('.gantt-task-dates');
-        if (datesSpan) {
-            datesSpan.textContent = `${startFormatted} - ${endFormatted}`;
-        }
-
-        taskBar.setAttribute('data-start-date', formatDate(startDate));
-        taskBar.setAttribute('data-end-date', formatDate(endDate));
-    }
-    
-    function updateTaskDatesInDB(taskBar) {
-        const taskId = taskBar.getAttribute('data-task-id');
-        const startDate = taskBar.getAttribute('data-start-date');
-        const endDate = taskBar.getAttribute('data-end-date');
-        const maquinariaId = taskBar.getAttribute('data-maquinaria-id');
-        
-        console.log('Enviando actualización para tarea:', {
-            id: taskId,
-            finicio: startDate,
-            ftermino: endDate,
-            maquinaria_id: maquinariaId
-        });
-        
-        const formData = new FormData();
-        formData.append('finicio', startDate);
-        formData.append('ftermino', endDate);
-        if (maquinariaId) {
-            formData.append('maquinaria_id', maquinariaId);
-        }
-        formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-        
-        let baseUrl = window.location.origin;
-        const url = baseUrl.includes('localhost') 
-            ? `${baseUrl}/compromops/${taskId}/ajax-update`
-            : `${baseUrl}/example-app2/public/compromops/${taskId}/ajax-update`;
-        
-        console.log('URL de actualización:', url);
-        
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            },
-            body: formData
-        })
-        .then(response => {
-            if (!response.ok) {
-                return response.text().then(text => {
-                    console.error('Respuesta de error:', text);
-                    throw new Error(`Error ${response.status}: ${text.substring(0, 100)}...`);
-                });
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log('Tarea actualizada:', data);
-            showNotification('Tarea actualizada correctamente');
-            
-            // Actualizar el color de la barra si cambió de maquinaria
-            if (draggedToNewMaquinaria) {
-                // Aquí podrías actualizar el color según el centro
-                taskBar.style.backgroundColor = '#4a6cf7'; // Color por defecto
-                draggedToNewMaquinaria = false;
-            }
-        })
-        .catch(error => {
-            console.error('Error al actualizar:', error);
-            showNotification('Error al actualizar la tarea: ' + error.message, true);
-        });
-    }
-
-    function showNotification(message, isError = false) {
-        const notification = document.createElement('div');
-        notification.className = `gantt-notification ${isError ? 'gantt-notification-error' : 'gantt-notification-success'}`;
-        notification.textContent = message;
-        
-        document.body.appendChild(notification);
-        
-        setTimeout(() => {
-            notification.style.transform = 'translateY(0)';
-            notification.style.opacity = '1';
-        }, 10);
-        
-        setTimeout(() => {
-            notification.style.transform = 'translateY(-20px)';
-            notification.style.opacity = '0';
-            
-            setTimeout(() => {
-                document.body.removeChild(notification);
-            }, 300);
-        }, 3000);
-    }
-    
-    // Navegación entre semestres
-    if (prevSemesterBtn) {
-        prevSemesterBtn.addEventListener('click', function() {
-            navigateSemester(-1);
-        });
-    }
-    
-    if (nextSemesterBtn) {
-        nextSemesterBtn.addEventListener('click', function() {
-            navigateSemester(1);
-        });
-    }
-    
-    function navigateSemester(direction) {
-        currentSemester += direction;
-        
-        if (currentSemester < 1) {
-            currentSemester = 2;
-            currentYear--;
-        } else if (currentSemester > 2) {
-            currentSemester = 1;
-            currentYear++;
-        }
-        
-        window.location.href = `{{ route('compromops.index') }}?semester=${currentSemester}&year=${currentYear}`;
-    }
-    
-    const currentSemesterBtn = document.getElementById('currentSemesterBtn');
-
-    currentSemesterBtn.addEventListener('click', function() {
-        const today = new Date();
-        const todayMonth = today.getMonth() + 1;
-        const todayYear = today.getFullYear();
-        const todaySemester = todayMonth <= 6 ? 1 : 2;
-        
-        window.location.href = '{{ route('compromops.index') }}?semester=' + todaySemester + '&year=' + todayYear;
-    });
-    
-    function showConfirmationButtons(taskBar) {
-        const originalStartDate = taskBar.getAttribute('data-start-date');
-        const originalEndDate = taskBar.getAttribute('data-end-date');
-        const originalLeft = taskBar.style.left;
-        const originalWidth = taskBar.style.width;
-        
-        const existingConfirm = taskBar.querySelector('.gantt-confirm-action');
-        if (existingConfirm) {
-            existingConfirm.remove();
-        }
-        
-        const confirmContainer = document.createElement('div');
-        confirmContainer.className = 'gantt-confirm-action';
-        
-        const confirmBtn = document.createElement('button');
-        confirmBtn.className = 'gantt-confirm-btn';
-        confirmBtn.innerHTML = '✓';
-        confirmBtn.title = 'Confirmar cambio';
-        
-        const commentBtn = document.createElement('button');
-        commentBtn.className = 'gantt-comment-btn';
-        commentBtn.innerHTML = '💬';
-        commentBtn.title = 'Añadir comentario';
-        
-        const cancelBtn = document.createElement('button');
-        cancelBtn.className = 'gantt-cancel-btn';
-        cancelBtn.innerHTML = '✕';
-        cancelBtn.title = 'Cancelar cambio';
-        
-        confirmBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            updateTaskDatesInDB(taskBar);
-            confirmContainer.remove();
-        });
-        
-        commentBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            showCommentModal(taskBar);
-        });
-        
-        cancelBtn.addEventListener('click', function(e) {
-            e.stopPropagation();
-            
-            taskBar.style.left = originalLeft;
-            taskBar.style.width = originalWidth;
-            
-            taskBar.setAttribute('data-start-date', originalStartDate);
-            taskBar.setAttribute('data-end-date', originalEndDate);
-            
-            const startDate = new Date(originalStartDate);
-            const endDate = new Date(originalEndDate);
-            const datesSpan = taskBar.querySelector('.gantt-task-dates');
-            if (datesSpan) {
-                datesSpan.textContent = `${startDate.getDate()}/${startDate.getMonth() + 1} - ${endDate.getDate()}/${endDate.getMonth() + 1}`;
-            }
-            
-            confirmContainer.remove();
-            showNotification('Cambios cancelados');
-        });
-        
-        confirmContainer.appendChild(confirmBtn);
-        confirmContainer.appendChild(commentBtn);
-        confirmContainer.appendChild(cancelBtn);
-        
-        taskBar.appendChild(confirmContainer);
-    }
-
-    function showCommentModal(taskBar) {
-        const taskId = taskBar.getAttribute('data-task-id');
-        
-        let commentModal = document.getElementById('ganttCommentModal');
-        if (!commentModal) {
-            commentModal = document.createElement('div');
-            commentModal.id = 'ganttCommentModal';
-            commentModal.className = 'gantt-comment-modal';
-            
-            commentModal.innerHTML = `
-                <div class="gantt-comment-modal-content">
-                    <h3>Añadir comentario</h3>
-                    <textarea id="taskComment" class="gantt-comment-textarea" placeholder="Escribe tu comentario aquí..."></textarea>
-                    <div class="gantt-comment-actions">
-                        <button id="cancelComment" class="gantt-btn-secondary">Cancelar</button>
-                        <button id="saveComment" class="gantt-btn">Guardar</button>
+        <form id="newTaskForm" onsubmit="return submitNewTask(event)">
+            @csrf
+            <div class="gantt-modal-body">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskOp">OP *</label>
+                        <input type="text" id="taskOp" name="op" required placeholder="Número de OP">
+                    </div>
+                    <div class="form-group">
+                        <label for="taskNp">NP *</label>
+                        <input type="text" id="taskNp" name="np" required placeholder="Número de NP">
                     </div>
                 </div>
-            `;
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskLinea">Línea *</label>
+                        <input type="text" id="taskLinea" name="linea" required placeholder="Número de línea">
+                    </div>
+                    <div class="form-group">
+                        <label for="taskUsuario">Usuario *</label>
+                        <input type="text" id="taskUsuario" name="usuario" required placeholder="Usuario responsable">
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskMaquinaria">Maquinaria *</label>
+                        <select id="taskMaquinaria" name="maquinaria_id" required>
+                            <option value="">Seleccionar maquinaria</option>
+                            @foreach($centros as $centro)
+                                <optgroup label="{{ $centro->descripcion }}">
+                                    @foreach($centro->maquinarias as $maquinaria)
+                                        <option value="{{ $maquinaria->id }}">{{ $maquinaria->nombre }}</option>
+                                    @endforeach
+                                </optgroup>
+                            @endforeach
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="taskFinicio">Fecha Inicio *</label>
+                        <input type="date" id="taskFinicio" name="finicio" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="taskFtermino">Fecha Término *</label>
+                        <input type="date" id="taskFtermino" name="ftermino" required>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label for="taskObservaciones">Observaciones</label>
+                    <textarea id="taskObservaciones" name="observaciones" rows="3" placeholder="Observaciones adicionales"></textarea>
+                </div>
+            </div>
             
-            document.body.appendChild(commentModal);
-            
-            document.getElementById('cancelComment').addEventListener('click', function() {
-                commentModal.style.display = 'none';
-            });
-            
-            commentModal.addEventListener('click', function(e) {
-                if (e.target === commentModal) {
-                    commentModal.style.display = 'none';
-                }
-            });
-        }
-        
-        commentModal.style.display = 'block';
-        
-        document.getElementById('saveComment').onclick = function() {
-            const commentText = document.getElementById('taskComment').value.trim();
-            
-            if (commentText) {
-                saveTaskComment(taskId, commentText, taskBar);
-                commentModal.style.display = 'none';
-            } else {
-                showNotification('Por favor, escribe un comentario', true);
-            }
-        };
-    }
+            <div class="gantt-modal-footer">
+                <button type="button" class="btn btn-secondary" onclick="closeNewTaskModal()">Cancelar</button>
+                <button type="submit" class="btn btn-primary">Crear Tarea</button>
+            </div>
+        </form>
+    </div>
+</div>
 
-    function saveTaskComment(taskId, comment, taskBar) {
-        let baseUrl = window.location.origin;
-        const url = baseUrl.includes('localhost') 
-            ? `${baseUrl}/compromops/${taskId}/comment`
-            : `${baseUrl}/example-app2/public/compromops/${taskId}/comment`;
-        
-        const formData = new FormData();
-        formData.append('comment', comment);
-        formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-    
-        fetch(url, {
-            method: 'POST',
-            headers: {
-                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-            },
-            body: formData
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showNotification('Comentario guardado correctamente');
-                
-                updateTaskDatesInDB(taskBar);
-                
-                const confirmContainer = taskBar.querySelector('.gantt-confirm-action');
-                if (confirmContainer) {
-                    confirmContainer.remove();
-                }
-            } else {
-                showNotification('Error: ' + data.message, true);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showNotification('Error al guardar comentario', true);
-        });
-    }
-    
-    // Event listeners simplificados
-    window.addEventListener('resize', function() {
-        setTimeout(adjustDynamicHeights, 100);
-    });
-    
-    // Ajuste inicial simple
-    setTimeout(() => {
-        adjustDynamicHeights();
-        console.log('Sistema de scroll simplificado inicializado');
-    }, 500);
-});
-</script>
--->
 @endsection
