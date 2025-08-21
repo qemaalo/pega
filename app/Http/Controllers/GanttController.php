@@ -81,12 +81,14 @@ class GanttController extends Controller
             });
         }
         
-        // Obtener maquinarias agrupadas por centro (para el sidebar)
+        // Obtener TODOS los centros con maquinarias (dinámico)
         $centrosConMaquinarias = Centro::with(['maquinarias' => function($query) {
             $query->active()->orderBy('orden');
         }])
         ->active()
-        ->whereIn('descripcion', ['PRENSA', 'REVESTIMIENTO', 'POLIURETANO', 'TRAFILA', 'ANILLOS'])
+        ->whereHas('maquinarias', function($query) {
+            $query->active();
+        })
         ->orderBy('descripcion')
         ->get();
         
@@ -234,34 +236,36 @@ class GanttController extends Controller
                 'ftermino' => $request->ftermino
             ];
             
-            // Si se está actualizando la maquinaria, verificar conflictos
+            // Si se está actualizando la maquinaria, verificar conflictos salvo que se fuerce
             if ($request->has('maquinaria_id') && $request->maquinaria_id != $task->maquinaria_id) {
                 $maquinariaId = $request->maquinaria_id;
                 
-                // Verificar conflictos con otras tareas en la misma maquinaria
-                $conflicto = Compromops::where('maquinaria_id', $maquinariaId)
-                    ->where('id', '!=', $id)
-                    ->where(function($query) use ($request) {
-                        $query->whereBetween('finicio', [$request->finicio, $request->ftermino])
-                              ->orWhereBetween('ftermino', [$request->finicio, $request->ftermino])
-                              ->orWhere(function($q) use ($request) {
-                                  $q->where('finicio', '<=', $request->finicio)
-                                    ->where('ftermino', '>=', $request->ftermino);
-                              });
-                    })
-                    ->first();
-                
-                if ($conflicto) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Conflicto: Ya existe una tarea en esta maquinaria en las fechas seleccionadas',
-                        'conflicto' => [
-                            'op' => $conflicto->op,
-                            'linea' => $conflicto->linea,
-                            'finicio' => $conflicto->finicio,
-                            'ftermino' => $conflicto->ftermino
-                        ]
-                    ], 409);
+                if (!$request->boolean('force')) {
+                    // Verificar conflictos con otras tareas en la misma maquinaria
+                    $conflicto = Compromops::where('maquinaria_id', $maquinariaId)
+                        ->where('id', '!=', $id)
+                        ->where(function($query) use ($request) {
+                            $query->whereBetween('finicio', [$request->finicio, $request->ftermino])
+                                  ->orWhereBetween('ftermino', [$request->finicio, $request->ftermino])
+                                  ->orWhere(function($q) use ($request) {
+                                      $q->where('finicio', '<=', $request->finicio)
+                                        ->where('ftermino', '>=', $request->ftermino);
+                                  });
+                        })
+                        ->first();
+                    
+                    if ($conflicto) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Conflicto: Ya existe una tarea en esta maquinaria en las fechas seleccionadas',
+                            'conflicto' => [
+                                'op' => $conflicto->op,
+                                'linea' => $conflicto->linea,
+                                'finicio' => $conflicto->finicio,
+                                'ftermino' => $conflicto->ftermino
+                            ]
+                        ], 409);
+                    }
                 }
                 
                 $updateData['maquinaria_id'] = $maquinariaId;

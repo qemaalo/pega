@@ -40,6 +40,15 @@
         </div>
         
         <div class="gantt-header-right">
+            <div class="gantt-center-filter">
+                <label for="centroFilter" class="gantt-center-filter-label">Centro</label>
+                <select id="centroFilter" class="gantt-center-filter-select">
+                    <option value="">Todos</option>
+                    @foreach($centros as $c)
+                        <option value="{{ $c->id }}">{{ $c->descripcion }}</option>
+                    @endforeach
+                </select>
+            </div>
             <form action="{{ route('compromops.index') }}" method="GET" class="gantt-search-form">
                 <div class="search-container">
                     <input type="text" name="search_op" placeholder="Buscar por OP..." class="gantt-search-input" value="{{ request()->search_op ?? '' }}">
@@ -88,30 +97,10 @@
             <!-- Sidebar estático -->
             <div class="gantt-sidebar" id="ganttSidebar">
                 <div class="gantt-sidebar-content">
-                    @if(isset($centros) && $centros->count() > 0)
-                        @foreach($centros as $centro)
-                            <div class="gantt-centro-group" data-centro-id="{{ $centro->id }}">
-                                <div class="gantt-centro-header" onclick="toggleCentroGroup({{ $centro->id }})">
-                                    <div class="gantt-centro-info">
-                                        <span class="gantt-centro-toggle">▼</span>
-                                        <h4>{{ $centro->descripcion }}</h4>
-                                    </div>
-                                    <span class="gantt-centro-count">({{ $centro->maquinarias->count() }})</span>
-                                </div>
-                                <div class="gantt-centro-maquinarias" id="centro-maquinarias-{{ $centro->id }}">
-                                    @foreach($centro->maquinarias as $maquinaria)
-                                        <div class="gantt-maquinaria-row" data-maquinaria-id="{{ $maquinaria->id }}">
-                                            <div class="gantt-maquinaria-name">{{ $maquinaria->nombre }}</div>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            </div>
-                        @endforeach
-                    @else
-                        <div class="gantt-empty-sidebar">
-                            Sin maquinarias configuradas
-                        </div>
-                    @endif
+                    <!-- El contenido será generado dinámicamente por JavaScript -->
+                    <div class="gantt-loading-sidebar">
+                        <div>Cargando maquinarias...</div>
+                    </div>
                 </div>
             </div>
             
@@ -134,7 +123,9 @@
         tasks: @json($tasks),
         startDate: '{{ $startDate->format('Y-m-d') }}',
         endDate: '{{ $endDate->format('Y-m-d') }}',
-        totalDays: {{ $totalDays }}
+    totalDays: {{ $totalDays }},
+    // URL para crear tareas (usa rutas de Laravel para ambientes con subcarpetas)
+    storeUrl: '{{ route('compromops.store') }}'
     };
 </script>
 
@@ -159,11 +150,27 @@ document.addEventListener('DOMContentLoaded', function() {
     
     console.log('📊 Verificando datos:', window.ganttData);
     
+    // Validación de datos base para evitar bloqueos en render
+    if (!window.ganttData || !Array.isArray(window.ganttData.centros) || !Array.isArray(window.ganttData.tasks)) {
+        console.error('❌ ganttData incompleto o ausente:', window.ganttData);
+        const sidebarContent = sidebar ? sidebar.querySelector('.gantt-sidebar-content') : null;
+        if (sidebarContent) {
+            sidebarContent.innerHTML = '<div class="gantt-empty-sidebar">Sin datos para renderizar</div>';
+        }
+        return; // Detener para evitar spinner infinito o errores
+    }
     const { centros, tasks, startDate, endDate, totalDays } = window.ganttData;
+    // Filtro de centro seleccionado (null/todos por defecto)
+    window.ganttData.selectedCentroId = window.ganttData.selectedCentroId || null;
 
     // FUNCIÓN GLOBAL: Configurar eventos de barras de tareas con drag & drop completo
     window.setupTaskBarEvents = function(taskBar) {
         console.log('🎯 EJECUTANDO setupTaskBarEvents para:', taskBar.getAttribute('data-task-id'));
+        // Evitar doble-inicialización de eventos sobre la misma barra
+        if (taskBar.dataset.setupBound === '1') {
+            return;
+        }
+        taskBar.dataset.setupBound = '1';
         
         // Verificar si la tarea está inactiva
         if (taskBar.getAttribute('data-activo') === "0") {
@@ -181,6 +188,17 @@ document.addEventListener('DOMContentLoaded', function() {
         let initialTop = 0;
         let initialWidth = 0;
         let draggedToNewMaquinaria = false;
+    let awaitingConfirm = false;
+    let confirmKeydownHandler = null;
+        // Guardar estado original para poder revertir
+        let originalState = {
+            left: parseInt(taskBar.style.left) || 0,
+            top: parseInt(taskBar.style.top) || 0,
+            width: parseInt(taskBar.style.width) || 0,
+            startDate: taskBar.getAttribute('data-start-date'),
+            endDate: taskBar.getAttribute('data-end-date'),
+            maquinariaId: taskBar.getAttribute('data-maquinaria-id')
+        };
 
         // Variables para las posiciones de las maquinarias
         const maquinariaPositions = JSON.parse(ganttGrid.dataset.maquinariaPositions || '{}');
@@ -246,11 +264,12 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         // FUNCIÓN: Enviar actualización al servidor usando tu método ajaxUpdate
-        function updateTaskDatesInDB(taskBar) {
+        function updateTaskDatesInDB(taskBar, options = {}) {
             const taskId = taskBar.getAttribute('data-task-id');
             const startDate = taskBar.getAttribute('data-start-date');
             const endDate = taskBar.getAttribute('data-end-date');
             const maquinariaId = taskBar.getAttribute('data-maquinaria-id');
+            const force = options.force === true;
             
             console.log('Enviando actualización para tarea:', {
                 id: taskId,
@@ -265,6 +284,9 @@ document.addEventListener('DOMContentLoaded', function() {
             if (maquinariaId) {
                 formData.append('maquinaria_id', maquinariaId);
             }
+            if (force) {
+                formData.append('force', '1');
+            }
             formData.append('_token', document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
             
             // Usar la misma lógica de URL de tu código de ejemplo
@@ -275,10 +297,11 @@ document.addEventListener('DOMContentLoaded', function() {
             
             console.log('URL de actualización:', url);
             
-            fetch(url, {
+        fetch(url, {
                 method: 'POST',
                 headers: {
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content'),
+            'X-Requested-With': 'XMLHttpRequest'
                 },
                 body: formData
             })
@@ -301,6 +324,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     taskBar.style.backgroundColor = '#4a6cf7'; // Color por defecto
                     draggedToNewMaquinaria = false;
                 }
+                // Actualizar datos locales de la tarea en memoria para reflejar cambios
+                try {
+                    const tIdNum = parseInt(taskId);
+                    const t = (window.ganttData && Array.isArray(window.ganttData.tasks)) ? window.ganttData.tasks.find(tt => tt.id == tIdNum) : null;
+                    if (t) {
+                        t.finicio = startDate;
+                        t.ftermino = endDate;
+                        if (maquinariaId) t.maquinaria_id = parseInt(maquinariaId);
+                    }
+                } catch (e) { /* noop */ }
             })
             .catch(error => {
                 console.error('Error al actualizar:', error);
@@ -308,6 +341,78 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Revertir posición en caso de error
                 renderTaskBars();
             });
+        }
+
+        // Detectar colisión con otras barras en misma maquinaria y rango de fechas
+        function hasCollision(taskId, maquinariaId, startStr, endStr) {
+            if (!window.ganttData || !Array.isArray(window.ganttData.tasks)) return false;
+            const s = new Date(startStr);
+            const e = new Date(endStr);
+            return window.ganttData.tasks.some(t => {
+                if (!t || !t.finicio || !t.ftermino) return false;
+                if (String(t.id) === String(taskId)) return false;
+                if (String(t.maquinaria_id) !== String(maquinariaId)) return false;
+                const ts = new Date(t.finicio);
+                const te = new Date(t.ftermino);
+                // Intersección inclusiva
+                return (s <= te) && (e >= ts);
+            });
+        }
+
+        function removeConfirmUI() {
+            const existing = taskBar.querySelector('.gantt-confirm-action');
+            if (existing) existing.remove();
+            taskBar.classList.remove('conflict');
+            awaitingConfirm = false;
+            // Restaurar overflow del taskBar
+            taskBar.style.overflow = 'hidden';
+            // Restaurar interactividad de la barra
+            taskBar.style.pointerEvents = '';
+            // Quitar listener de teclado si existe
+            if (confirmKeydownHandler) {
+                document.removeEventListener('keydown', confirmKeydownHandler);
+                confirmKeydownHandler = null;
+            }
+        }
+
+        function showConfirmUI(onConfirm, onCancel) {
+            removeConfirmUI();
+            // Asegurar que el overlay no se recorte
+            taskBar.style.overflow = 'visible';
+            // Evitar interacciones inesperadas con la barra durante la confirmación
+            taskBar.style.pointerEvents = 'auto';
+            const wrapper = document.createElement('div');
+            wrapper.className = 'gantt-confirm-action';
+            const ok = document.createElement('button');
+            ok.className = 'gantt-confirm-btn';
+            ok.title = 'Confirmar';
+            ok.textContent = '';
+            const cancel = document.createElement('button');
+            cancel.className = 'gantt-cancel-btn';
+            cancel.title = 'Cancelar';
+            cancel.textContent = '';
+            wrapper.appendChild(ok);
+            wrapper.appendChild(cancel);
+            taskBar.appendChild(wrapper);
+            // Evitar que clicks/downs en el overlay inicien drag/resize de la barra
+            wrapper.addEventListener('mousedown', (e) => { e.stopPropagation(); });
+            wrapper.addEventListener('click', (e) => { e.stopPropagation(); });
+            ok.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onConfirm && onConfirm(); removeConfirmUI(); });
+            cancel.addEventListener('click', (e) => { e.preventDefault(); e.stopPropagation(); onCancel && onCancel(); removeConfirmUI(); });
+            // Atajos de teclado: Enter confirma, ESC cancela
+            confirmKeydownHandler = function(e) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    if (onCancel) onCancel();
+                    removeConfirmUI();
+                } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    if (onConfirm) onConfirm();
+                    removeConfirmUI();
+                }
+            };
+            document.addEventListener('keydown', confirmKeydownHandler);
+            awaitingConfirm = true;
         }
 
         // FUNCIÓN: Mostrar notificación (adaptada de tu código)
@@ -429,9 +534,55 @@ document.addEventListener('DOMContentLoaded', function() {
                     endDate: formatDateForServer(dates.endDate),
                     maquinariaId: taskBar.getAttribute('data-maquinaria-id')
                 });
-                
-                // Enviar actualización al servidor
-                updateTaskDatesInDB(taskBar);
+
+                // Validar colisión
+                const taskId = taskBar.getAttribute('data-task-id');
+                const maqId = taskBar.getAttribute('data-maquinaria-id');
+                const sStr = taskBar.getAttribute('data-start-date');
+                const eStr = taskBar.getAttribute('data-end-date');
+                if (hasCollision(taskId, maqId, sStr, eStr)) {
+                    taskBar.classList.add('conflict');
+                    showConfirmUI(
+                        () => {
+                            // Confirmado: enviar con force
+                            updateTaskDatesInDB(taskBar, { force: true });
+                        },
+                        () => {
+                            // Cancelado: revertir datos y re-render completo (grilla + barras)
+                            const taskId = taskBar.getAttribute('data-task-id');
+                            const task = (window.ganttData.tasks || []).find(t => String(t.id) === String(taskId));
+                            if (task) {
+                                // restaurar del modelo original
+                                task.finicio = originalState.startDate;
+                                task.ftermino = originalState.endDate;
+                                task.maquinaria_id = originalState.maquinariaId;
+                            }
+                            // Restaurar DOM inmediato para que no se "rompa" mientras re-renderiza
+                            taskBar.style.left = (originalState.left || 0) + 'px';
+                            taskBar.style.top = (originalState.top || 0) + 'px';
+                            taskBar.style.width = (originalState.width || 0) + 'px';
+                            taskBar.setAttribute('data-start-date', originalState.startDate);
+                            taskBar.setAttribute('data-end-date', originalState.endDate);
+                            taskBar.setAttribute('data-maquinaria-id', originalState.maquinariaId);
+                            // Quitar UI de confirmación y estados
+                            const overlay = taskBar.querySelector('.gantt-confirm-action');
+                            if (overlay) overlay.remove();
+                            taskBar.classList.remove('conflict');
+                            // Resetear estado de interacción y clases
+                            isDragging = false; isResizing = false; resizeType = null;
+                            taskBar.classList.remove('dragging');
+                            taskBar.classList.remove('resizing');
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                            awaitingConfirm = false;
+                            if (typeof renderGrid === 'function') renderGrid();
+                            renderTaskBars();
+                        }
+                    );
+                } else {
+                    // Enviar actualización al servidor sin confirmación
+                    updateTaskDatesInDB(taskBar);
+                }
                 
             } else if (isResizing) {
                 isResizing = false;
@@ -453,9 +604,48 @@ document.addEventListener('DOMContentLoaded', function() {
                     startDate: formatDateForServer(dates.startDate),
                     endDate: formatDateForServer(dates.endDate)
                 });
-                
-                // Enviar actualización al servidor
-                updateTaskDatesInDB(taskBar);
+                // Validar colisión en resize
+                const taskId = taskBar.getAttribute('data-task-id');
+                const maqId = taskBar.getAttribute('data-maquinaria-id');
+                const sStr = taskBar.getAttribute('data-start-date');
+                const eStr = taskBar.getAttribute('data-end-date');
+                if (hasCollision(taskId, maqId, sStr, eStr)) {
+                    taskBar.classList.add('conflict');
+                    showConfirmUI(
+                        () => { updateTaskDatesInDB(taskBar, { force: true }); },
+                        () => {
+                            // Cancelado: restaurar datos de modelo y re-render completo
+                            const taskId = taskBar.getAttribute('data-task-id');
+                            const task = (window.ganttData.tasks || []).find(t => String(t.id) === String(taskId));
+                            if (task) {
+                                task.finicio = originalState.startDate;
+                                task.ftermino = originalState.endDate;
+                                task.maquinaria_id = originalState.maquinariaId;
+                            }
+                            // Restaurar DOM inmediato
+                            taskBar.style.left = (originalState.left || 0) + 'px';
+                            taskBar.style.top = (originalState.top || 0) + 'px';
+                            taskBar.style.width = (originalState.width || 0) + 'px';
+                            taskBar.setAttribute('data-start-date', originalState.startDate);
+                            taskBar.setAttribute('data-end-date', originalState.endDate);
+                            taskBar.setAttribute('data-maquinaria-id', originalState.maquinariaId);
+                            const overlay = taskBar.querySelector('.gantt-confirm-action');
+                            if (overlay) overlay.remove();
+                            taskBar.classList.remove('conflict');
+                            // Resetear estado de interacción y clases
+                            isDragging = false; isResizing = false; resizeType = null;
+                            taskBar.classList.remove('dragging');
+                            taskBar.classList.remove('resizing');
+                            document.removeEventListener('mousemove', handleMouseMove);
+                            document.removeEventListener('mouseup', handleMouseUp);
+                            awaitingConfirm = false;
+                            if (typeof renderGrid === 'function') renderGrid();
+                            renderTaskBars();
+                        }
+                    );
+                } else {
+                    updateTaskDatesInDB(taskBar);
+                }
             }
             
             // Limpiar estado
@@ -468,7 +658,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // EVENT LISTENER: Drag principal de la barra
         taskBar.addEventListener('mousedown', function(e) {
+            // Solo botón izquierdo (0)
+            if (e.button !== 0) return;
             if (taskBar.getAttribute('data-activo') === "0") return;
+            if (awaitingConfirm) return; // Evitar nuevas acciones mientras se confirma
             
             // No iniciar drag si se hace clic en un resizer
             if (e.target.classList.contains('gantt-task-resizer-left') || 
@@ -486,6 +679,15 @@ document.addEventListener('DOMContentLoaded', function() {
             initialLeft = parseInt(taskBar.style.left) || 0;
             initialTop = parseInt(taskBar.style.top) || 0;
             initialWidth = parseInt(taskBar.style.width) || 100;
+            // Capturar estado original por si hay que revertir
+            originalState = {
+                left: initialLeft,
+                top: initialTop,
+                width: initialWidth,
+                startDate: taskBar.getAttribute('data-start-date'),
+                endDate: taskBar.getAttribute('data-end-date'),
+                maquinariaId: taskBar.getAttribute('data-maquinaria-id')
+            };
             
             // Agregar listeners globales
             document.addEventListener('mousemove', handleMouseMove);
@@ -510,7 +712,9 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             resizerLeft.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return;
                 if (taskBar.getAttribute('data-activo') === "0") return;
+                if (awaitingConfirm) return;
                 
                 console.log('🎯 INICIANDO RESIZE IZQUIERDO de barra:', taskBar.getAttribute('data-task-id'));
                 
@@ -521,6 +725,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 initialMouseX = e.clientX;
                 initialLeft = parseInt(taskBar.style.left) || 0;
                 initialWidth = parseInt(taskBar.style.width) || 100;
+                originalState = {
+                    left: initialLeft,
+                    top: parseInt(taskBar.style.top) || 0,
+                    width: initialWidth,
+                    startDate: taskBar.getAttribute('data-start-date'),
+                    endDate: taskBar.getAttribute('data-end-date'),
+                    maquinariaId: taskBar.getAttribute('data-maquinaria-id')
+                };
                 
                 // Agregar listeners globales
                 document.addEventListener('mousemove', handleMouseMove);
@@ -547,7 +759,9 @@ document.addEventListener('DOMContentLoaded', function() {
             });
             
             resizerRight.addEventListener('mousedown', function(e) {
+                if (e.button !== 0) return;
                 if (taskBar.getAttribute('data-activo') === "0") return;
+                if (awaitingConfirm) return;
                 
                 console.log('🎯 INICIANDO RESIZE DERECHO de barra:', taskBar.getAttribute('data-task-id'));
                 
@@ -558,6 +772,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 initialMouseX = e.clientX;
                 initialLeft = parseInt(taskBar.style.left) || 0;
                 initialWidth = parseInt(taskBar.style.width) || 100;
+                originalState = {
+                    left: initialLeft,
+                    top: parseInt(taskBar.style.top) || 0,
+                    width: initialWidth,
+                    startDate: taskBar.getAttribute('data-start-date'),
+                    endDate: taskBar.getAttribute('data-end-date'),
+                    maquinariaId: taskBar.getAttribute('data-maquinaria-id')
+                };
                 
                 // Agregar listeners globales
                 document.addEventListener('mousemove', handleMouseMove);
@@ -616,6 +838,118 @@ document.addEventListener('DOMContentLoaded', function() {
     function getDayOfWeek(date) {
         return date.getDay();
     }
+
+    // Renderizar sidebar dinámicamente
+    function renderSidebar() {
+        console.log('🎨 Generando sidebar dinámico...');
+        console.log('📊 Centros disponibles:', centros.length);
+        console.log('📋 Listado de centros:', centros.map(c => c.descripcion));
+        
+        const sidebar = document.getElementById('ganttSidebar');
+        if (!sidebar) {
+            console.error('Sidebar no encontrado');
+            return;
+        }
+        
+        const sidebarContent = sidebar.querySelector('.gantt-sidebar-content');
+        if (!sidebarContent) {
+            console.error('Contenido del sidebar no encontrado');
+            return;
+        }
+        
+    // Limpiar contenido existente (elimina spinner de carga si quedó)
+    sidebarContent.innerHTML = '';
+        
+        // Verificar si hay centros
+        if (!centros || centros.length === 0) {
+            sidebarContent.innerHTML = '<div class="gantt-empty-sidebar">Sin maquinarias configuradas</div>';
+            return;
+        }
+        
+        const selectedCentroId = window.ganttData.selectedCentroId;
+        // Generar contenido dinámicamente (filtrando por centro si aplica)
+        centros.forEach(centro => {
+            if (selectedCentroId && String(centro.id) !== String(selectedCentroId)) {
+                return; // omitir centros no seleccionados
+            }
+            const centroGroup = document.createElement('div');
+            centroGroup.className = 'gantt-centro-group';
+            centroGroup.setAttribute('data-centro-id', centro.id);
+            
+            // Header del centro
+            const centroHeader = document.createElement('div');
+            centroHeader.className = 'gantt-centro-header';
+            centroHeader.onclick = () => toggleCentroGroup(centro.id);
+            
+            const centroInfo = document.createElement('div');
+            centroInfo.className = 'gantt-centro-info';
+            
+            const centroToggle = document.createElement('span');
+            centroToggle.className = 'gantt-centro-toggle';
+            centroToggle.textContent = '▼';
+            
+            const centroTitle = document.createElement('h4');
+            centroTitle.textContent = centro.descripcion;
+            
+            centroInfo.appendChild(centroToggle);
+            centroInfo.appendChild(centroTitle);
+            
+            const centroCount = document.createElement('span');
+            centroCount.className = 'gantt-centro-count';
+            centroCount.textContent = `(${centro.maquinarias ? centro.maquinarias.length : 0})`;
+            
+            centroHeader.appendChild(centroInfo);
+            centroHeader.appendChild(centroCount);
+            
+            // Container de maquinarias
+            const maquinariasContainer = document.createElement('div');
+            maquinariasContainer.className = 'gantt-centro-maquinarias';
+            maquinariasContainer.id = `centro-maquinarias-${centro.id}`;
+            
+            // Generar maquinarias si existen
+            if (centro.maquinarias && centro.maquinarias.length > 0) {
+                centro.maquinarias.forEach(maquinaria => {
+                    const maquinariaRow = document.createElement('div');
+                    maquinariaRow.className = 'gantt-maquinaria-row';
+                    maquinariaRow.setAttribute('data-maquinaria-id', maquinaria.id);
+                    
+                    const maquinariaName = document.createElement('div');
+                    maquinariaName.className = 'gantt-maquinaria-name';
+                    maquinariaName.textContent = maquinaria.nombre;
+                    
+                    maquinariaRow.appendChild(maquinariaName);
+                    maquinariasContainer.appendChild(maquinariaRow);
+                });
+            }
+            
+            // Agregar todo al grupo del centro
+            centroGroup.appendChild(centroHeader);
+            centroGroup.appendChild(maquinariasContainer);
+            
+            // Agregar al contenido del sidebar
+            sidebarContent.appendChild(centroGroup);
+        });
+        
+    console.log(`✅ Sidebar generado con ${centros.length} centros`);
+    }
+    
+    // Función global para colapsar/expandir grupos de centros
+    window.toggleCentroGroup = function(centroId) {
+        const maquinariasContainer = document.getElementById(`centro-maquinarias-${centroId}`);
+        const toggleIcon = document.querySelector(`[data-centro-id="${centroId}"] .gantt-centro-toggle`);
+        
+        if (maquinariasContainer && toggleIcon) {
+            maquinariasContainer.classList.toggle('collapsed');
+            toggleIcon.textContent = maquinariasContainer.classList.contains('collapsed') ? '▶' : '▼';
+            
+            // Re-sincronizar grilla después de colapsar/expandir
+            setTimeout(() => {
+                renderGrid(); // Re-renderizar grilla para mantener alineación
+                // Asegurar que las barras se reconstruyan acorde al nuevo layout
+                renderTaskBars();
+            }, 300);
+        }
+    };
 
     // Renderizar grilla con alineación perfecta
     function renderGrid() {
@@ -755,13 +1089,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Esta función ahora se encarga de re-renderizar la grilla cada vez que cambia el estado
         // Ya no necesitamos manipular filas individuales, sino re-renderizar todo
         console.log('Sincronizando grilla con sidebar...');
-        renderGrid(); // Re-renderizar toda la grilla
-        renderTaskBars(); // Re-renderizar las barras de tareas
+    renderGrid(); // Re-renderizar toda la grilla
+    renderTaskBars(); // Re-renderizar las barras de tareas (eliminando previas antes de crear nuevas)
         
         // Verificar alineación después de sincronizar
-        setTimeout(() => {
-            ensurePerfectAlignment();
-        }, 50);
+    setTimeout(() => { ensurePerfectAlignment(); }, 50);
     }
 
     // Renderizar barras de tareas
@@ -785,7 +1117,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         let tareasCreadas = 0;
         
-        window.ganttData.tasks.forEach((task, index) => {
+    window.ganttData.tasks.forEach((task, index) => {
             if (!task.finicio || !task.ftermino) {
                 return; // Saltamos tareas sin fechas
             }
@@ -839,6 +1171,10 @@ document.addEventListener('DOMContentLoaded', function() {
             // Crear barra de tarea
             const bar = createTaskBar(task, leftPosition, width, topPosition, barHeight, barColor);
             ganttTimelineElement.appendChild(bar);
+            // Importante: enlazar eventos de drag/resize a cada barra recién creada
+            if (window.setupTaskBarEvents) {
+                window.setupTaskBarEvents(bar);
+            }
             
             tareasCreadas++;
         });
@@ -912,48 +1248,15 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Función auxiliar para manejar eventos de resize
     function addResizeEvents(resizer, bar, side) {
+        // Evitar doble registro: si existe el sistema avanzado de eventos,
+        // no añadimos estos handlers básicos (setupTaskBarEvents se encarga).
+        if (window.setupTaskBarEvents) {
+            return;
+        }
+        // Fallback mínimo (no debería usarse cuando setupTaskBarEvents está presente)
         resizer.addEventListener('mousedown', function(e) {
             e.stopPropagation();
             e.preventDefault();
-            
-            const startMouseX = e.clientX;
-            const startLeft = parseInt(bar.style.left) || 0;
-            const startWidth = parseInt(bar.style.width) || 100;
-            
-            const minWidth = 50; // Ancho mínimo de la barra
-            
-            function onMouseMove(moveEvent) {
-                const deltaX = moveEvent.clientX - startMouseX;
-                
-                if (side === 'left') {
-                    // Resize desde la izquierda
-                    const newLeft = startLeft + deltaX;
-                    const newWidth = startLeft + startWidth - newLeft;
-                    
-                    if (newWidth >= minWidth) {
-                        bar.style.left = newLeft + 'px';
-                        bar.style.width = newWidth + 'px';
-                    }
-                } else {
-                    // Resize desde la derecha
-                    const newWidth = startWidth + deltaX;
-                    
-                    if (newWidth >= minWidth) {
-                        bar.style.width = newWidth + 'px';
-                    }
-                }
-            }
-            
-            function onMouseUp() {
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-                
-                // Aquí se podría llamar a updateTaskInDatabase si es necesario
-                console.log(`Tarea ${bar.getAttribute('data-task-id')} redimensionada`);
-            }
-            
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
         });
     }
         
@@ -1139,6 +1442,10 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('🎯 Total tareas:', window.ganttData.tasks.length);
     
     try {
+        console.log('🎨 Llamando renderSidebar()...');
+        renderSidebar();
+        console.log('✅ renderSidebar() completado');
+        
         console.log('📊 Llamando renderGrid()...');
         renderGrid();
         console.log('✅ renderGrid() completado');
@@ -1199,6 +1506,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const prevSemesterBtn = document.getElementById('prevSemester');
     const nextSemesterBtn = document.getElementById('nextSemester');
     const currentSemesterBtn = document.getElementById('currentSemesterBtn');
+    const centroFilterSelect = document.getElementById('centroFilter');
     
     console.log('🔍 Elementos de navegación encontrados:', {
         prevSemesterBtn: !!prevSemesterBtn,
@@ -1234,6 +1542,21 @@ document.addEventListener('DOMContentLoaded', function() {
         console.log('✅ Event listener agregado a currentSemester');
     } else {
         console.error('❌ Botón currentSemester no encontrado');
+    }
+    if (centroFilterSelect) {
+        // Inicializar valor (si ya hay uno seleccionado previamente)
+        if (window.ganttData.selectedCentroId) {
+            centroFilterSelect.value = String(window.ganttData.selectedCentroId);
+        }
+        centroFilterSelect.addEventListener('change', function() {
+            const val = this.value;
+            window.ganttData.selectedCentroId = val ? val : null;
+            // Re-render según filtro aplicado
+            renderSidebar();
+            renderGrid();
+            renderTaskBars();
+            setTimeout(() => ensurePerfectAlignment(), 50);
+        });
     }
     
     // FUNCIÓN: Navegar a semestre anterior/siguiente
@@ -1405,7 +1728,8 @@ function submitNewTask(event) {
     submitBtn.textContent = 'Creando...';
     submitBtn.disabled = true;
     
-    fetch('/compromops', {
+    // Usar la URL generada por Laravel para mayor compatibilidad
+    fetch(window.ganttData && window.ganttData.storeUrl ? window.ganttData.storeUrl : '/compromops', {
         method: 'POST',
         body: formData,
         headers: {
@@ -1515,7 +1839,7 @@ function setupGridCellClicks() {
             e.target.closest('.gantt-grid-cell')) {
             
             // Verificar que no sea un click en una tarea existente
-            if (e.target.closest('.task-bar')) {
+            if (e.target.closest('.gantt-task-bar')) {
                 console.log('Click en tarea existente, ignorando');
                 return;
             }
@@ -1714,6 +2038,9 @@ document.addEventListener('DOMContentLoaded', function() {
         display: flex;
         justify-content: flex-end;
     }
+    .gantt-center-filter { display: flex; align-items: center; gap: 6px; margin-right: 10px; }
+    .gantt-center-filter-label { font-size: 0.8rem; color: #555; }
+    .gantt-center-filter-select { height: 28px; font-size: 0.85rem; padding: 2px 8px; border: 1px solid #dee2e6; border-radius: 6px; }
     
     .gantt-title {
         font-size: 1.6rem; /* Reducido de 2.2rem */
@@ -2387,6 +2714,35 @@ document.addEventListener('DOMContentLoaded', function() {
         font-size: 1.1rem;
     }
     
+    .gantt-loading-sidebar {
+        padding: 20px;
+        text-align: center;
+        color: #666;
+        font-style: italic;
+    }
+    
+    .gantt-loading-sidebar div {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+    }
+    
+    .gantt-loading-sidebar div:before {
+        content: '';
+        width: 20px;
+        height: 20px;
+        border: 2px solid #e3e3e3;
+        border-top: 2px solid #4a6cf7;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
     /* Contenedor del Timeline - alineación perfecta */
     .gantt-timeline-container {
         flex: 1;
@@ -2557,7 +2913,6 @@ document.addEventListener('DOMContentLoaded', function() {
         z-index: 1000;
         box-shadow: 0 2px 8px rgba(0,0,0,0.2);
     }
-    }
     
     .gantt-grid-cell.weekend {
         background: #f39c12;
@@ -2666,6 +3021,8 @@ document.addEventListener('DOMContentLoaded', function() {
     .gantt-task-bar.conflict {
         background-color: #e74c3c !important;
         animation: pulse 1s infinite;
+    border-color: #c0392b !important;
+    z-index: 1002;
     }
     
     @keyframes pulse {
@@ -2974,58 +3331,56 @@ document.addEventListener('DOMContentLoaded', function() {
         background: #f44336;
     }
 
-    /* Estilos para el botón de confirmación - Aumentados */
+    /* Estilos para la confirmación de colisión - compacto e icónico */
     .gantt-confirm-action {
         position: absolute;
-        right: -40px; /* Aumentado */
-        top: 0;
-        height: 100%;
-        display: flex;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        display: inline-flex;
         align-items: center;
         gap: 6px;
+        background: rgba(255,255,255,0.95);
+        border: 1px solid rgba(0,0,0,0.06);
+        border-radius: 999px;
+        padding: 4px 6px;
+        box-shadow: 0 6px 14px rgba(0,0,0,0.18);
+        z-index: 9999;
+        pointer-events: auto;
     }
 
-    .gantt-confirm-btn {
-        width: 35px; /* Aumentado */
-        height: 35px;
-        border-radius: 50%;
-        background-color: #4caf50;
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        font-size: 18px; /* Aumentado */
-        border: none;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
-        transition: all 0.2s ease;
-    }
-
-    .gantt-confirm-btn:hover {
-        background-color: #3d8b40;
-        transform: scale(1.15);
-    }
-
+    .gantt-confirm-btn,
     .gantt-cancel-btn {
-        width: 35px; /* Aumentado */
-        height: 35px;
-        border-radius: 50%;
-        background-color: #f44336;
-        color: white;
-        display: flex;
+        width: 28px;
+        height: 28px;
+        display: inline-flex;
         align-items: center;
         justify-content: center;
+        padding: 0;
+        border-radius: 50%;
+        font-size: 14px;
+        font-weight: 700;
         cursor: pointer;
-        font-size: 18px; /* Aumentado */
-        border: none;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.2);
-        transition: all 0.2s ease;
+        border: 1px solid transparent;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+        transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease;
+        user-select: none;
+        line-height: 1;
     }
 
-    .gantt-cancel-btn:hover {
-        background-color: #d32f2f;
-        transform: scale(1.15);
-    }
+    .gantt-confirm-btn { background: #2e7d32; color: #fff; }
+    .gantt-confirm-btn::before { content: '✓'; }
+    .gantt-confirm-btn:hover { background: #27692b; box-shadow: 0 4px 10px rgba(46,125,50,0.35); }
+
+    .gantt-cancel-btn { background: #c62828; color: #fff; }
+    .gantt-cancel-btn::before { content: '✕'; }
+    .gantt-cancel-btn:hover { background: #b71c1c; box-shadow: 0 4px 10px rgba(183,28,28,0.35); }
+
+    .gantt-confirm-btn:focus-visible,
+    .gantt-cancel-btn:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(74,108,247,0.35); }
+
+    .gantt-confirm-btn:active,
+    .gantt-cancel-btn:active { transform: translateY(1px) scale(0.96); box-shadow: 0 1px 3px rgba(0,0,0,0.2); }
 
     .gantt-comment-btn {
         width: 35px; /* Aumentado */
@@ -3041,6 +3396,12 @@ document.addEventListener('DOMContentLoaded', function() {
         border: none;
         box-shadow: 0 3px 8px rgba(0,0,0,0.2);
         transition: all 0.2s ease;
+    }
+
+    .gantt-confirm-text {
+        font-size: 12px;
+        color: #333;
+        margin-right: 4px;
     }
 
     .gantt-comment-btn:hover {
